@@ -22,6 +22,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - `apps/web`: React, R3F, zustand, xterm.js.
 - `fixtures/<provider>/*.jsonl`: recorded, scrubbed hook payloads. The test backbone.
 - `docs/protocols/<provider>.md`: verified facts about each CLI's hooks (with the CLI version).
+- `docs/glossary.md`: precise meanings of session, agent, activity, health, attention, mood and the credential types. `docs/architecture.md`: map of the code as it exists.
 - `docs/dev-harness.md`: how the Claude Code harness (settings, hooks, agents, skills, evals) works and how to change it.
 - `docs/engineering-standards.md`: every engineering practice and the check that enforces it. Add a row when you introduce one.
 - `docs/deferred-practices.md`: practices we chose not to adopt yet, with the trigger that brings each back. Search it before proposing a new tool, hook or process.
@@ -50,6 +51,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - Never call real provider CLIs in tests. Use the fake provider.
 - Windows is first-class: use `path` APIs, not string concatenation; no POSIX-only shell in scripts; resolve `.cmd`/`.exe` binaries.
 - Check current dependency versions when installing. Don't pin from memory.
+- Start tasks with `/start-task <id>` and finish with `/finish-task`; they perform the steps below.
 - Before finishing: `npm run check` green, a `reviewer` subagent pass on the diff (paste the `git diff` output into its prompt; the reviewer has no shell), eval cases for any reviewer rules due with the task (`evals/harness/reviewer/uncovered.json`; CI fails if they're overdue), one conventional commit per task (`feat(server): …`), and the task's checkbox ticked in `docs/PLAN.md`.
 - Harness changes follow the principles in `docs/dev-harness.md` (procedures and checks beat prose; add agents or hooks only on evidence).
 - If the plan is wrong or ambiguous, stop and say so. Propose the plan edit rather than guessing.

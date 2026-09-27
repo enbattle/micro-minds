@@ -203,7 +203,13 @@ export type PathClass = 'home-config' | 'home-or-ancestor' | 'other';
  * "could match", so `~/.c*` and `/c/Users/*` are caught, and `**` above the config dirs counts as
  * reaching them.
  */
-export function classifyPath(absolute: string, ctx: GuardContext): PathClass {
+export type Access = 'read' | 'write';
+
+export function classifyPath(
+  absolute: string,
+  ctx: GuardContext,
+  access: Access = 'read',
+): PathClass {
   const fold = foldCase(ctx.platform);
   const split = (p: string): string[] => p.split(/[\\/]+/).filter((s) => s.length > 0);
   const home = split(pathApi(ctx.platform).resolve(ctx.homeDir));
@@ -218,7 +224,7 @@ export function classifyPath(absolute: string, ctx: GuardContext): PathClass {
   const next = target[home.length];
   if (next === undefined) return 'home-or-ancestor';
   if (!isProtectedDirName(next)) return 'other';
-  return isClaudeWorkingFile(next, target.slice(home.length + 1)) ? 'other' : 'home-config';
+  return isClaudeWorkingFile(next, target.slice(home.length + 1), access) ? 'other' : 'home-config';
 }
 
 /**
@@ -226,20 +232,28 @@ export function classifyPath(absolute: string, ctx: GuardContext): PathClass {
  * file tools: plans (plan mode), per-project auto-memory, and large tool outputs. Blocking them
  * breaks those features without protecting anything secret, so they are exempt (decision made
  * with the repo owner during Phase 0). Every segment must be literal: a glob could widen the
- * match to credentials or session transcripts.
+ * match to credentials or session transcripts. Tool results are read-only, matching the deny
+ * rules in .claude/settings.json (ADR 0024); plans and memory are also written.
  */
-function isClaudeWorkingFile(configDir: string, rest: readonly string[]): boolean {
+function isClaudeWorkingFile(configDir: string, rest: readonly string[], access: Access): boolean {
   if (configDir.toLowerCase() !== '.claude' || rest.some(hasGlob)) return false;
   const [first, slug, area] = rest;
   if (first === 'plans') return true;
-  return (
-    first === 'projects' && slug !== undefined && (area === 'memory' || area === 'tool-results')
-  );
+  if (first !== 'projects' || slug === undefined) return false;
+  return area === 'memory' || (area === 'tool-results' && access === 'read');
 }
 
-function checkPath(raw: string, base: string, ctx: GuardContext): Decision {
+/** File tools that modify their target. Shell commands count as reads (the guard can't tell). */
+const WRITE_TOOLS: ReadonlySet<string> = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+
+function checkPath(
+  raw: string,
+  base: string,
+  ctx: GuardContext,
+  access: Access = 'read',
+): Decision {
   const absolute = resolveToken(raw, base, ctx);
-  if (absolute !== null && classifyPath(absolute, ctx) === 'home-config') {
+  if (absolute !== null && classifyPath(absolute, ctx, access) === 'home-config') {
     return deny(REASONS.homeConfig);
   }
   return isEnvFileName(basename(raw)) ? deny(REASONS.envFile) : ALLOW;
@@ -365,7 +379,8 @@ export function decide(input: unknown, ctx: GuardContext): Decision {
   }
   const field = FILE_PATH_FIELDS[call.toolName];
   const filePath = field === undefined ? undefined : stringField(call.toolInput, field);
-  return filePath === undefined ? ALLOW : checkPath(filePath, base, ctx);
+  const access: Access = WRITE_TOOLS.has(call.toolName) ? 'write' : 'read';
+  return filePath === undefined ? ALLOW : checkPath(filePath, base, ctx, access);
 }
 
 /** The stdout payload that tells Claude Code to block the tool call. */

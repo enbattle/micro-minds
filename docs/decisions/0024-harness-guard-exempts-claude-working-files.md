@@ -29,7 +29,7 @@ The dev harness allows exactly these subtrees of `~/.claude`:
 |---|---|---|
 | `~/.claude/plans/**` | allowed | allowed |
 | `~/.claude/projects/<slug>/memory/**` | allowed | allowed |
-| `~/.claude/projects/<slug>/tool-results/**` | allowed | blocked by deny rule; the guard allows it |
+| `~/.claude/projects/<slug>/tool-results/**` | allowed | blocked by the deny rule and by the guard (aligned 2026-09-27, found by the harness integrity test) |
 
 Everything else in `~/.claude` stays blocked, notably `.credentials.json`, `settings.json`,
 session transcripts (`projects/<slug>/*.jsonl`) and listings of `projects/`. `~/.gemini` and

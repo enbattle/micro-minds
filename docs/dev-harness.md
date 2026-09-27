@@ -35,12 +35,45 @@ Every change to the harness is judged against these, in order:
 | Permissions | `.claude/settings.json` → `permissions` | Allow routine commands without prompts; deny dangerous or sensitive ones |
 | Guard hook | `.claude/hooks/guard.ts` (`PreToolUse`) | Second layer for credential and `.env` protection (see below) |
 | Format hook | `.claude/hooks/format.ts` (`PostToolUse`) | Runs Biome on every file Claude edits |
+| Session context hook | `.claude/hooks/session-context.ts` (`SessionStart`) | Injects live state (branch, next task, eval rules due with it, dirty tree) so CLAUDE.md stays small |
 | Subagents | `.claude/agents/` | `reviewer` (read-only diff review; pass it the `git diff` output, since it has no shell), `test-writer` |
-| Skills | `.claude/skills/` | `phase-status`, `new-adapter`, `record-fixture` |
-| Harness evals | `evals/harness/` | Guard tests (run in CI) and reviewer evals (run manually; they spend tokens) |
+| Workflow skills | `.claude/skills/start-task`, `finish-task` | Turn CLAUDE.md's task workflow into procedures: scope and plan a task; check, review, tick, commit, then hand the push/PR to you |
+| Other skills | `.claude/skills/` | `phase-status`, `new-adapter`, `record-fixture` |
+| Harness evals | `evals/harness/` | Deterministic, in CI: guard, coverage schedule, session context, harness integrity, doc links and budgets. Manual (they spend tokens): reviewer evals |
+| Reference docs | `docs/glossary.md`, `docs/architecture.md` | Precise terms, and a map of the code as it exists |
 | Decisions | `docs/decisions/` | ADRs, including the harness policy in ADR 0024 |
 
 `.claude/settings.local.json` is gitignored. Use it for personal overrides and never commit it.
+
+## Task workflow
+
+1. `/phase-status` (optional) shows where the plan stands and what's next.
+2. `/start-task <id>` validates the task, sets up a branch, lists everything due with it
+   (acceptance criteria, eval cases, scheduled standards), and plans before any code.
+3. Implement, tests first where CLAUDE.md requires it.
+4. `/finish-task` runs the gates in order (check, coverage, eval schedule, reviewer), ticks the
+   checkbox, updates docs, commits, and prints the push/PR commands for you. Claude can't push
+   (`git push` is denied). It reviews **what is staged**, so the check, the reviewer and the commit
+   all see the same bytes. It's user-invoked only, because it commits.
+
+Flags: `/start-task <id> --branch` creates the proposed branch without asking.
+`/finish-task --run-evals` allows the token-spending eval runs; without it the skill asks first.
+
+## Where knowledge goes (memory policy)
+
+Claude Code has an auto-memory under `~/.claude/projects/<slug>/memory/` (exempt from the guard,
+ADR 0024). It's personal: it lives on one machine and nobody reviews it. So:
+
+| Knowledge | Goes in |
+|---|---|
+| Facts about the repo, its design or its tools (how X works, why Y was chosen) | The repo: PLAN, an ADR, `docs/*`, a protocol doc, or a package CLAUDE.md, in a reviewed PR |
+| Rules every session must follow | CLAUDE.md, within its size budget; details in linked docs |
+| Practices we chose not to adopt | [deferred-practices.md](deferred-practices.md) |
+| Personal preferences (tone, how much detail you like, your usual workflow) | Auto-memory |
+| Progress on the current task | The PR, commits, and the PLAN checkbox. Not memory |
+
+If a memory turns out to describe the repo, move it into the docs and delete the memory. Claude
+should never treat a memory as more authoritative than the repo files it describes.
 
 ## Credential protection: two layers
 
@@ -66,7 +99,7 @@ mode, auto-memory and reading large command outputs, so both layers allow exactl
 
 - `~/.claude/plans/**` (plans from plan mode)
 - `~/.claude/projects/<slug>/memory/**` (auto-memory)
-- `~/.claude/projects/<slug>/tool-results/**` (large tool outputs; read-only in the deny rules)
+- `~/.claude/projects/<slug>/tool-results/**` (large tool outputs; read-only: Edit and Write are blocked by both layers)
 
 Everything else stays blocked: `.credentials.json`, `settings.json`, session transcripts, and any
 path written with a glob. **This exemption applies to the dev harness only.** App code under

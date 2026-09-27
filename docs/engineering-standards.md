@@ -24,7 +24,7 @@ in PRs, with no automated check).
 
 | Practice | Enforced by | Status |
 |---|---|---|
-| Tests first for `packages/shared` and adapters, fixture-driven | reviewer `TEST-missing`, `TEST-no-fixture`; `/finish-task` (planned) | Convention |
+| Tests first for `packages/shared` and adapters, fixture-driven | reviewer `TEST-missing`, `TEST-no-fixture`; `/finish-task` | Convention |
 | Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
 | Coverage thresholds for `apps/server` and `packages/hook-relay` | Added with the first real code in each | Scheduled: 2.6, 2.10 |
 | Coverage thresholds for `apps/web` | Added with the web shell | Scheduled: 3.1 |
@@ -65,7 +65,7 @@ in PRs, with no automated check).
 | Changes land through PRs with green CI | `protect-main` and `ci-verify` rulesets (3 OS checks, CodeQL) | Enforced |
 | Conventional commits and PR titles | `commits` CI job (`scripts/lint-commits.ts`); `npm run lint:commits` locally | Enforced |
 | Merge commits, not squash, so per-task history survives | Repo settings: squash disabled | Enforced |
-| One task per PR, reviewer pass, checkbox ticked | CLAUDE.md "Before finishing"; `/finish-task` (planned) | Convention |
+| One task per PR, reviewer pass, checkbox ticked | CLAUDE.md "Before finishing"; `/finish-task` | Convention |
 | Decisions recorded as ADRs | `docs/decisions/`; reviewer `ARCH-missing-adr` | Convention |
 | Docs stay accurate: no broken links, small always-loaded context | `evals/harness/docs/docs.test.ts` (CI) | Enforced |
 
@@ -75,6 +75,9 @@ in PRs, with no automated check).
 |---|---|---|
 | Harness changes follow the harness principles | [dev-harness.md](dev-harness.md#principles); PR review | Convention |
 | Guard hook behavior | 215+ deterministic guard tests in CI | Enforced |
+| The harness is internally consistent: hooks exist and are registered and tested, matchers use real tool names, the guard and settings agree on exemptions, agent and skill frontmatter is valid, hard-rule numbering matches the reviewer catalog | `evals/harness/integrity/` (CI) | Enforced |
+| Sessions start with live context (branch, next task, eval rules due, dirty tree) rather than a longer CLAUDE.md | `SessionStart` hook `session-context.ts`, tested in `evals/harness/session/` | Enforced |
+| The task workflow is a procedure, not prose | `/start-task` (plan before code; Edit and Write disabled until you approve) and `/finish-task` (ordered gates) | Convention: skills, evals scheduled in 2.15 |
 | Every reviewer rule has an eval case, or one is scheduled | `coverage.test.ts` reads PLAN checkboxes (CI) | Enforced |
 | Reviewer quality does not regress | `npm run eval:harness -- --trials 3` at every phase gate; baseline history | Enforced at phase gates |
 | Evals for `test-writer`, skills, golden task, red-team prompts | PLAN tasks | Scheduled: 2.15, 2.16 |
