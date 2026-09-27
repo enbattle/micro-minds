@@ -28,6 +28,7 @@ export type LockProblemKind =
   | 'no-reason'
   | 'not-ancestor'
   | 'late-revision'
+  | 'merge-lock'
   | 'modified'
   | 'deleted'
   | 'added';
@@ -124,6 +125,11 @@ function commitsWithTrailers(cwd: string, base: string): LogEntry[] {
 }
 
 /** Paths a commit adds, modifies or deletes relative to its first parent. */
+/** Number of parents a commit has (more than one: a merge). */
+function parentCount(cwd: string, sha: string): number {
+  return git(cwd, ['rev-list', '--parents', '-n', '1', sha]).trim().split(/\s+/).length - 1;
+}
+
 function changedPaths(cwd: string, sha: string): string[] {
   return nulSplit(
     git(cwd, ['diff-tree', '-r', '--root', '--no-commit-id', '--name-only', '-z', sha]),
@@ -224,6 +230,14 @@ export function checkLock(options: LockOptions): LockResult {
     });
   }
   for (const lock of locks) {
+    // A merge hides what it changes (diff-tree lists nothing; `^` is only the first parent), so a
+    // lock commit must be an ordinary commit.
+    if (parentCount(cwd, lock.sha) > 1) {
+      problems.push({
+        kind: 'merge-lock',
+        detail: `lock commit ${lock.sha.slice(0, 7)} is a merge; commit the tests on their own`,
+      });
+    }
     for (const changed of changedPaths(cwd, lock.sha)) {
       if (!isTestPath(changed)) {
         problems.push({
