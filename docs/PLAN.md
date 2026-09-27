@@ -576,7 +576,7 @@ The harness is code, so it gets tested too.
 | Risk | Likelihood | Mitigation |
 |---|---|---|
 | Hook formats change between CLI versions | High | `unknown` kind, conformance and fixture tests, CLI version recorded in protocol docs |
-| node-pty install pain on Windows | Medium | Phase 0.3 smoke test, CI on 3 operating systems, prerequisites documented in the README |
+| node-pty install pain (Windows, macOS) | Medium | Phase 0.3 smoke test, CI on 3 operating systems, prerequisites documented in the README. node-pty 1.1.0 ships its macOS `spawn-helper` without the executable bit; `scripts/fix-node-pty.ts` (postinstall) repairs it until upstream fixes it |
 | A prompt-injected agent pivots through the app | Low / high impact | Scoped hook tokens (D13), localhost only, origin checks |
 | Sensitive data in stored payloads | Medium | Redaction and caps on `raw` (D14), local-only storage, a wipe command |
 | Gemini/Codex hooks too limited | Medium | Terminal-only fallback, deferred to Phase 5 (D10) |
