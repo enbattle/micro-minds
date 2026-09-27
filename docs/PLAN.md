@@ -475,7 +475,16 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 **Goal:** replace every "verify" for Claude with facts and recorded fixtures.
 
-- [ ] 1.1 A capture sink that appends payloads to `fixtures/claude/<scenario>.jsonl`, fed by an HTTP hook and by the relay.
+**Before you start (read once):**
+
+- **Human in the loop.** The Claude session driving Phase 1 builds the capture sink and the per-scenario settings files, then gives the user the exact command to run. **The user runs each recorded scenario** in a separate terminal and answers its prompts. The driving session never starts an interactive `claude` itself. Headless `claude -p` runs are fine for scenarios that need no interaction, but only with the user's OK, because every recording spends tokens (the subagent and compaction scenarios cost the most).
+- **Record in a scratch repo, never in micro-minds.** A session recorded inside this repo would also load its CLAUDE.md and fire its harness hooks (guard, format, session context), which would contaminate the fixtures. Create a small scratch git repo outside this one (for example `~/micro-minds-spike-target`), with a few source files and a script that fails, for scenario (c).
+- **Raw captures stay outside the repo.** Payloads contain real paths, usernames and `transcript_path`. The sink writes raw captures to `~/.micro-minds-dev/spike/captures/`, and only scrubbed copies (task 1.7, `record-fixture` skill) go into `fixtures/claude/`. Never open a file at `transcript_path` (hard rule 1). GitHub push protection is a backstop, not the process.
+- **Settings.** Per-scenario settings files go in `~/.micro-minds-dev/spike/` and are passed with `claude --settings <file>`. Never edit `~/.claude/settings.json` (hard rule 2). The sink binds to `127.0.0.1` only.
+- **Spike code** lives in `spikes/phase-1/`. It must pass `npm run check` (Biome and `tsc` apply), but it has no coverage threshold and no tests-first requirement. Phase 2 reimplements what it needs properly, and the PR that closes Phase 2 deletes `spikes/`.
+- **Eval cases due in this phase:** `/start-task` lists them. Currently `HR5-hook-fail-open` is due with 1.4, and five general rules are due with 1.8. The phase gate (§14.6) applies when 1.8 is ticked.
+
+- [ ] 1.1 A capture sink (in `spikes/phase-1/`) that appends raw payloads to `~/.micro-minds-dev/spike/captures/<scenario>.jsonl` (outside the repo; scrubbed into `fixtures/claude/` in 1.7), fed by an HTTP hook and by the relay.
 - [ ] 1.2 Record scenarios: (a) Q&A, (b) read + edit, (c) failing shell command, (d) permission prompt, (e) AskUserQuestion, (f) subagent, (g) Ctrl-C, (h) process killed, (i) compaction if practical.
 - [ ] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
 - [ ] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
@@ -628,5 +637,6 @@ The harness is code, so it gets tested too.
 - Lightweight resume in the MVP (D20), graceful shutdown (D21), app lifecycle and edge cases (§5.6).
 - Mood model with distinct working and idle states (§4.4, D22).
 - UI authentication redesigned after the threat model (D26, ADR 0026): one-time bootstrap code → HttpOnly cookie; no secret in served HTML. Security acceptance items added to tasks 1.3, 2.5, 2.6, 2.9 and 2.10.
+- Phase 1 working rules (a "Before you start" block): the user runs recorded sessions; recordings happen in a scratch repo; raw captures stay outside the repo until scrubbed; spike code lives in `spikes/phase-1/`.
 - Engineering standards (docs/engineering-standards.md): property-based tests, schema/protocol versioning, migrations, logging conventions, untrusted terminal output, accessibility (new task 3.11), bundle and throughput budgets, all attached to the tasks that create the code.
 - Usage and cost monitoring (D25, §5.7): OpenTelemetry capture and basic totals in the MVP (tasks 1.8, 2.14, 3.10), the full panel in Phase 6. Also added the missing session-control frames to §8.

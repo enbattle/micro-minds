@@ -3,5 +3,11 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["*.config.ts", "scripts/**/*.ts", "evals/**/*.ts", ".claude/hooks/**/*.ts"]
+  "include": [
+    "*.config.ts",
+    "scripts/**/*.ts",
+    "spikes/**/*.ts",
+    "evals/**/*.ts",
+    ".claude/hooks/**/*.ts"
+  ]
 }
