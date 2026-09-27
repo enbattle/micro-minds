@@ -1,0 +1,61 @@
+# CI for micro-minds (PLAN task 0.10, D11): lint + typecheck + test on Linux, macOS and Windows.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs for the same PR/branch, but let every push to main finish so each
+# main commit keeps a complete, trustworthy result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Least privilege: the workflow only needs to read the repository.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Linux compiles node-pty from source (no linux prebuilds), so allow some headroom.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      # .gitattributes already forces LF (`* text=auto eol=lf`), which wins over autocrlf.
+      # This is a cheap guard in case attributes change: Windows runners default to
+      # core.autocrlf=true, and CRLF files would fail Biome's format check (lineEnding: lf).
+      - name: Disable CRLF conversion
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      # Install scripts must run: node-pty uses bundled prebuilds on win32/darwin and builds
+      # from source on Linux (ubuntu runners ship python3, make and g++).
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check (lint, typecheck, test)
+        run: npm run check
+
+      # The web build (Vite) is cheap, so it runs on every OS to catch platform-specific
+      # path issues (D11).
+      - name: Build
+        run: npm run build
