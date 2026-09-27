@@ -379,6 +379,7 @@ export function formatDenyOutput(reason: string): string {
   });
 }
 
+/* v8 ignore start -- process entry point: covered by the subprocess tests in evals/harness/guard, which v8 cannot instrument. */
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin as AsyncIterable<unknown>) {
@@ -425,3 +426,4 @@ if (import.meta.main) {
     process.exitCode = 0;
   }
 }
+/* v8 ignore stop */

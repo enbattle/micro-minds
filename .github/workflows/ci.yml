@@ -55,7 +55,61 @@ jobs:
       - name: Check (lint, typecheck, test)
         run: npm run check
 
+      # Coverage runs once (Linux); per-glob thresholds live in vitest.config.ts.
+      - name: Test coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run test:coverage
+
+      # Audits run once (Linux): the lockfile is the same on every OS. Production dependencies
+      # ship with the app, so high or critical advisories there block. Dev dependencies (build,
+      # lint, test tooling) never run in the shipped app and rarely see untrusted input, so only
+      # critical advisories block; lower ones arrive through Dependabot without failing CI.
+      - name: Audit production dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Audit all dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: npm audit --audit-level=critical
+
       # The web build (Vite) is cheap, so it runs on every OS to catch platform-specific
       # path issues (D11).
       - name: Build
         run: npm run build
+
+  # Conventional Commits for every commit in the PR and for the PR title
+  # (scripts/lint-commits.ts, no third-party action).
+  commits:
+    name: commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Full history, so the base branch and all PR commits are available to `git log`.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      # On pull_request, HEAD is GitHub's synthetic merge of the PR into the base branch
+      # ("Merge <sha> into <sha>"). Nobody wrote it and it never lands, so the range ends at the
+      # PR head SHA instead (the merge's second parent, fetched along with it). Starting from the
+      # base branch tip, the range is exactly the PR's own commits.
+      # Event data reaches the script only through env, never interpolated into `run`
+      # (script injection).
+      - name: Lint commit subjects
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/lint-commits.ts --range "origin/${BASE_REF}..${HEAD_SHA}"
+
+      - name: Lint PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/lint-commits.ts --title

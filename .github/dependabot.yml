@@ -29,6 +29,12 @@ updates:
       prefix-development: chore
       include: scope
     open-pull-requests-limit: 10
+    ignore:
+      # @types/node tracks the Node runtime major we require (engines, ADR 0023). Bump it
+      # together with engines and .node-version on a deliberate LTS move, not on every new
+      # Node major. Minor and patch updates still come through.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
