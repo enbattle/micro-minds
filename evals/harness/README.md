@@ -79,7 +79,7 @@ Also re-run after a Claude Code upgrade or a model change. Results vary from run
 ### Adding a case
 
 1. Create `reviewer/cases/<kebab-name>/`. Clean cases start with `clean-`.
-2. Write `change.diff` as a real unified diff with `a/`/`b/` paths as they would be in this repo (`git diff` output, LF line endings). Keep it small and otherwise correct, so the only defects are the planted ones. Put a plausible justification next to the violation so it takes a careful read to spot it. Clean cases should include their tests.
+2. Write `change.diff` as a real unified diff with `a/`/`b/` paths as they would be in this repo (`git diff` output, LF line endings). Keep it small and otherwise correct, so the only defects are the planted ones. Put a plausible justification next to the violation so it takes a careful read to spot it. Clean cases should include their tests, and those tests must cover every branch the code adds (the first baseline caught an untested 429 path). A case may import relative helpers it doesn't include; the eval prompt tells the reviewer that the diff is an excerpt and that such modules exist (`buildPrompt` in `reviewer/invocation.ts`).
 3. Write `expected.json`. `mustFind` lists every planted rule ID. `mustNotFind` lists nearby rules the code deliberately satisfies (for example `SEC-token-compare` when the code does use `timingSafeEqual`). `notes` explains both.
 4. If a new rule ID is needed, add it to a catalog table in `.claude/agents/reviewer.md` first. If the case covers a rule listed in `reviewer/uncovered.json`, remove that entry in the same PR (CI fails on stale entries).
 5. Run `npm run eval:harness -- --dry-run` and `npx vitest run --project harness`, then run the new case for real: `npm run eval:harness -- <kebab-name>`.
@@ -139,3 +139,5 @@ Record each full run that follows a change to `CLAUDE.md`, `.claude/agents/` or 
 | Date | Reviewer model | Recall | Clean-case false positives | Forbidden hits | Cost | Notes |
 |---|---|---|---|---|---|---|
 | 2026-09-27 | default (inherit) | 12/12 (100%) | 0 | 1 → 0 | ≈ $0.94 + $0.10 | The first run flagged `TEST-missing` (minor) on `clean-hook-ingest`. The reviewer was right: the case's tests never exercised the 429 rate-limit path. Fixed the case by adding a per-session rate-limit test; the re-run passed. |
+| 2026-09-27 | claude-opus-5-5 | 36/36 (100%) | 1 | 0 | ≈ $1.79 | CC 2.1.283; trials 3; PASS. **Phase 0 gate.** Flaky: `clean-worktree-paths` 2/3. In one trial the reviewer flagged (major, `GEN-correctness`) an import of `./slug.ts`, which isn't in the diff. That's fair, because nothing said cases are excerpts. Fixed in the eval prompt, not the case. |
+| 2026-09-27 | claude-opus-5-5 | n/a (clean only) | 0 | 0 | ≈ $0.28 | CC 2.1.283; trials 3; PASS. Re-ran `clean-worktree-paths` and `clean-hook-ingest` (which has the same pattern) after the excerpt note was added to `buildPrompt`: 3/3 each. The next full run should confirm planted-case recall is unchanged. |
