@@ -23,7 +23,10 @@
     "test:coverage": "vitest run --coverage",
     "check": "npm run lint && npm run typecheck && npm test",
     "lint:commits": "node scripts/lint-commits.ts --range origin/main..HEAD",
-    "eval:harness": "node evals/harness/reviewer/run.ts"
+    "eval:harness": "node evals/harness/reviewer/run.ts",
+    "spike:sink": "node spikes/phase-1/sink.ts",
+    "spike:settings": "node spikes/phase-1/settings.ts",
+    "spike:relay-selftest": "node spikes/phase-1/relay-selftest.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
