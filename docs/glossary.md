@@ -63,7 +63,7 @@ There is no longer a "UI token" in pages or frames. That design was replaced by 
 
 | Term | Meaning |
 |---|---|
-| **Task** | A PLAN checkbox like `2.7`, roughly one PR. Done means the check is green, a reviewer pass, the checkbox ticked, and any eval cases due with it added. |
+| **Task** | A PLAN checkbox like `2.7`, roughly one PR. Done means: for code, its tests written by the test writer and locked before the implementation (ADR 0028); the check and the test lock green; an independent adversarial review (plus a security pass where due); the checkbox ticked; and any eval cases due with it added. |
 | **Phase gate** | Extra criteria before a phase counts as complete: harness evals with 3 trials, a baseline row, no overdue eval rules (PLAN §14). |
 | **Harness** | Everything that shapes how AI agents work on this repo: CLAUDE.md files, `.claude/` (settings, hooks, agents, skills) and `evals/harness/`. See [dev-harness.md](dev-harness.md). |
 | **Rule ID** | A reviewer finding category, like `HR4-hook-token-scope` or `SEC-terminal-escape`, from `.claude/agents/reviewer.md`. |

@@ -51,11 +51,47 @@ reopen only with new evidence).
 
 ### Specialized reviewer agents (`security-reviewer`, `ui-reviewer`)
 
-- **Status:** Deferred
+- **Status:** Deferred. The security *pass* was adopted in ADR 0028 as a second run of the same
+  `reviewer` in `mode: security`, for tasks the threat model names; only a separate agent
+  definition stays deferred.
 - **Why not now:** one `reviewer` with a rule catalog is easier to evaluate and maintain. Splitting
   it without evidence adds cost and overlapping findings.
 - **Revisit when:** reviewer eval recall for `SEC-*`/`HR3`/`HR4` or UI rules drops below the
   threshold across trials, or real misses cluster in one area.
+
+### A different model for review than for implementation
+
+- **Status:** Deferred (decided 2026-09-27, ADR 0028)
+- **What:** run the `reviewer` (`model:` in its frontmatter) on a different model from the
+  implementer, so their blind spots are less correlated.
+- **Why not now:** independence already comes from a fresh context, artifact-only input and an
+  adversarial mandate. There's no evidence that correlated blind spots remain, and only one model
+  family is available here.
+- **Revisit when:** reviewer evals or real reviews show misses that the implementer's model also
+  makes (the same wrong assumption in code and review), or a second model family becomes
+  available.
+
+### A per-change pipeline log and retrospective
+
+- **Status:** Deferred (decided 2026-09-27)
+- **What:** `til` and `cortex-workspace` append a row per change (gates, findings, escaped
+  defects) and run a short retrospective that turns friction into approved process diffs.
+- **Why not now:** each PR body already records the gates, the reviewer's rounds, findings and
+  probes, and the phase PR collects them per phase. Harness changes already need evidence
+  (principle 2), which the eval triggers supply.
+- **Revisit when:** a defect escapes review into `main` and nothing records how, or the same
+  friction shows up in two phase runs.
+
+### Spec folders with a human approval line per change
+
+- **Status:** Rejected (decided 2026-09-27, ADR 0028)
+- **What:** `cortex-workspace`'s change folders (proposal, design, tasks, lock) and a written
+  approval line before tests are written.
+- **Why not:** `docs/PLAN.md` is already the spec, task by task, and the user approves by starting
+  `/run-phase` and by merging. A second spec per task would duplicate the plan (drift by
+  construction).
+- **Revisit when:** work starts arriving that the PLAN doesn't describe (post-MVP features, bug
+  reports from use), which then needs its own written acceptance criteria.
 
 ### Claude Code sandbox mode for this repo
 

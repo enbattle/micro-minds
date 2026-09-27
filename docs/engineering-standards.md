@@ -24,7 +24,7 @@ in PRs, with no automated check).
 
 | Practice | Enforced by | Status |
 |---|---|---|
-| Tests first for `packages/shared` and adapters, fixture-driven | reviewer `TEST-missing`, `TEST-no-fixture`; `/finish-task` | Convention |
+| Tests first for every code change, fixture-driven where fixtures exist (who writes them and the lock: see the ADR 0028 rows below) | reviewer `TEST-missing`, `TEST-no-fixture`, `TEST-criteria`; `/finish-task` | Convention |
 | Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
 | Coverage thresholds for `apps/server` and `packages/hook-relay` | Added with the first real code in each | Scheduled: 2.6, 2.10 |
 | Coverage thresholds for `apps/web` | Added with the web shell | Scheduled: 3.1 |
@@ -65,7 +65,7 @@ in PRs, with no automated check).
 | Changes land through PRs with green CI | `protect-main` and `ci-verify` rulesets (3 OS checks, CodeQL) | Enforced |
 | Conventional commits and PR titles | `commits` CI job (`scripts/lint-commits.ts`); `npm run lint:commits` locally | Enforced |
 | Merge commits, not squash, so per-task history survives | Repo settings: squash disabled | Enforced |
-| One commit per task, reviewer pass, checkbox ticked; one PR per task or per phase | CLAUDE.md "Before finishing"; `/finish-task`, `/run-phase` | Convention |
+| Per task: a locked test commit (code tasks), then one implementation commit, an independent review, the checkbox ticked; one PR per task or per phase | CLAUDE.md "Before finishing"; `/finish-task`, `/run-phase` | Convention |
 | Claude pushes task and phase branches but never merges; the user's merge is the human review | `.claude/settings.json` allow and deny rules, checked against a command table in `evals/harness/integrity/` (CI); `protect-main` and `ci-verify` rulesets (ADR 0027) | Enforced |
 | Decisions recorded as ADRs | `docs/decisions/`; reviewer `ARCH-missing-adr` | Convention |
 | Docs stay accurate: no broken links, small always-loaded context | `evals/harness/docs/docs.test.ts` (CI) | Enforced |
@@ -78,6 +78,9 @@ in PRs, with no automated check).
 | Guard hook behavior | 215+ deterministic guard tests in CI | Enforced |
 | The harness is internally consistent: hooks exist and are registered and tested, matchers use real tool names, the guard and settings agree on exemptions, agent and skill frontmatter is valid, hard-rule numbering matches the reviewer catalog | `evals/harness/integrity/` (CI) | Enforced |
 | Sessions start with live context (branch, next task, eval rules due, dirty tree) rather than a longer CLAUDE.md | `SessionStart` hook `session-context.ts`, tested in `evals/harness/session/` | Enforced |
+| Tests for a code task are written first by a separate, fresh `test-writer`, from the task text only, then locked; the implementer never edits them | `/start-task` step 6; `scripts/tests-locked.ts` (`npm run tests:locked`), its planted-violation tests in CI; `/finish-task` step 1; reviewer `TEST-lock` (ADR 0028) | Enforced |
+| Review is independent and adversarial: artifact-only input, re-runs the checks, probes failure cases, shows what it probed, never changes the repository; a security pass where due | `reviewer` agent; `/finish-task` step 4 (fixed prompt, before/after snapshot); eval parser rejects an empty `probed` (ADR 0028) | Enforced (probed, snapshot); convention (prompt content) |
+| A phase run ends with a completeness audit of every task and "Done when" clause | `/run-phase` step 3 | Convention |
 | The task workflow is a procedure, not prose | `/start-task` (plan before code; Edit and Write disabled until you approve), `/finish-task` (ordered gates) and `/run-phase` (a whole phase, stopping for human steps) | Convention: skills, evals scheduled in 2.15 |
 | Every reviewer rule has an eval case, or one is scheduled | `coverage.test.ts` reads PLAN checkboxes (CI) | Enforced |
 | Reviewer quality does not regress | `npm run eval:harness -- --trials 3` at every phase gate; baseline history | Enforced at phase gates |

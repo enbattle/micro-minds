@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
-Short records of the decisions that shape micro-minds. ADRs 0001–0027 correspond one-to-one to
-decisions D1–D27 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
+Short records of the decisions that shape micro-minds. ADRs 0001–0028 correspond one-to-one to
+decisions D1–D28 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 
 | # | Title | Status |
 |---|---|---|
@@ -32,6 +32,7 @@ decisions D1–D27 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 | [0025](0025-usage-cost-from-cli-telemetry.md) | Usage and cost come from the CLI's own telemetry | Accepted |
 | [0026](0026-ui-session-bootstrap.md) | UI sessions start from a one-time code and live in an HttpOnly cookie | Accepted |
 | [0027](0027-claude-pushes-branches-humans-merge.md) | Claude pushes task and phase branches; merges stay human | Accepted |
+| [0028](0028-independent-tests-and-adversarial-review.md) | Tests by a separate writer, locked; adversarial, independent review | Accepted |
 
 ## When to write an ADR
 

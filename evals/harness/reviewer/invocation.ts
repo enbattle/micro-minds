@@ -14,7 +14,11 @@ export const DEFAULT_INVOCATION: InvocationOptions = {
   model: undefined,
 };
 
-/** The reviewer only needs to read; the agent file allows the same three tools. */
+/**
+ * Eval cases are diffs that aren't applied to disk, so the eval narrows the reviewer to read-only
+ * tools on purpose. In real use the agent file also allows Bash, to re-run checks and probe
+ * (ADR 0028); here the reviewer judges the diff as written.
+ */
 export const REVIEWER_TOOLS = 'Read,Grep,Glob';
 
 const SAFE_ARG = /^[A-Za-z0-9._,-]+$/;

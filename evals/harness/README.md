@@ -31,7 +31,7 @@ Each case in `reviewer/cases/<case>/` has:
 - **Recall** = planted rule IDs reported ÷ planted rule IDs, over all cases, at any severity.
 - **mustNotFind hit**: the reviewer reported a rule the case says doesn't apply (a false positive on a planted case).
 - **Clean-case false positive**: any `blocker` or `major` finding on a clean case. `minor` findings are allowed.
-- **Error**: the CLI failed, timed out, hit the turn or budget cap, or the final ```json block didn't parse. Its planted rules count as missed.
+- **Error**: the CLI failed, timed out, hit the turn or budget cap, or the final ```json block didn't parse. Its planted rules count as missed. A block without a non-empty `probed` list doesn't parse (ADR 0028: a review must show what it tried), so an approval that shows no work is an error, not a pass.
 
 A **trial passes** only if it has no error, no missed planted rule, no mustNotFind hit and no clean-case blocker/major finding. With `--trials N`, a **case passes** when at least `requiredPasses(N) = ceil(2N/3)` of its trials pass: 1 of 1, 2 of 2, 2 of 3, 3 of 4, and so on (`reviewer/trials.ts`).
 
