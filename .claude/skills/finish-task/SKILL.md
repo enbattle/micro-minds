@@ -18,7 +18,7 @@ Arguments: `$ARGUMENTS`. `--run-evals` means the user agrees to spend tokens on 
 - **Task branch** (`<type>/<id>-<slug>`): one task, one pull request. `BASE` means `--merge-base origin/main`.
 - **Phase branch** (`phase/<n>-<slug>`, run by `/run-phase`): one pull request for the phase. Earlier tasks are already committed and reviewed, so this task's change is its lock commit(s) plus what's staged: `BASE` means `<L>^`, the parent of the task's first `Test-lock: <id>` commit (`git log --format=%H --grep="^Test-lock: <id>$" origin/main..HEAD`, the last line). A task with no lock commit (docs only) uses `HEAD`.
 
-**Code tasks** (ADR 0028): a task whose change touches anything but docs (`*.md`), `spikes/` and reviewer eval-case data (`evals/harness/reviewer/cases/`) must already have its `Test-lock: <id>` commit from `/start-task` step 6. Each task ends as two or three commits: the lock commit (plus at most one revision), then the implementation commit this skill makes.
+**Code tasks** (ADR 0028): a task whose change touches code or tests, as defined in `docs/dev-harness.md` ("Which tasks get locked tests"), must already have its `Test-lock: <id>` commit from `/start-task` step 6. Data and docs (fixtures, config, `*.md`, `spikes/`, eval-case data) need none. A code task ends as: an optional test-infrastructure commit, the lock commit (plus at most one revision), then the implementation commit this skill makes.
 
 ## Git state (captured before you read this)
 

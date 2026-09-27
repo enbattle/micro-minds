@@ -88,6 +88,20 @@ three roles are kept apart, each in a fresh context that never sees another's re
 | Implementer (the main session) | The locked tests, the plan | Edits a test after the lock (`npm run tests:locked` fails) |
 | `reviewer` | The task text, the clauses and the command that shows the diff | Gets the implementer's summary or claims; changes the repository |
 
+- **Which tasks get locked tests** (the one definition; the skills and agents point here). A task
+  needs the test writer and a lock commit when its change touches **code** (TypeScript or
+  JavaScript under `packages/`, `apps/`, `scripts/`, `.claude/hooks/` or `evals/`, test files
+  aside) or adds or changes **tests** (`*.test.ts`, `*.test.tsx`, `e2e/`). Everything else is
+  **data or docs** and needs no lock: `*.md`, `spikes/`, reviewer eval-case data, fixtures, and
+  config (`package.json` and the lockfile, `biome.json`, `tsconfig*`, `vitest.config.*`,
+  `.github/`, `.claude/settings.json`). Every test in any task comes from the test writer.
+- **Test infrastructure comes first.** What the tests need but don't define goes in its own
+  commit before the test writer runs (`chore(<scope>): test infrastructure for <id>`): a test
+  dependency the task names (fast-check for 2.1, Playwright for 3.9, axe-core for 3.11), the
+  fixtures a task delivers (1.7, 1.8) that its replay tests read, or a behavior-free seam (a type
+  or interface) the test writer asked for. The lock commit's body names it, and the reviewer
+  checks it holds no behavior. If the test writer reports a missing seam, add it this way and run
+  a fresh test writer once more.
 - **Locked tests.** The test writer's files are committed alone with a `Test-lock: <id>` trailer.
   `scripts/tests-locked.ts` then fails on any test path modified, deleted or added afterwards
   (committed, staged, unstaged or untracked; new snapshot files excepted). A disputed test gets one

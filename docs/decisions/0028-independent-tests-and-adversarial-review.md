@@ -28,12 +28,15 @@ fresh reviewer catching a planted bug the tests missed.
 
 ## Decision
 
-1. **Tests first, by a separate fresh context, then locked.** For every task that changes code
-   (anything but docs, spike code and eval-case data), the `test-writer` subagent writes the
+1. **Tests first, by a separate fresh context, then locked.** For every task that touches code or
+   tests (defined once in `docs/dev-harness.md`; fixtures, config, docs, spike code and eval-case
+   data are data, not code), the `test-writer` subagent writes the
    failing tests from artifacts only: the PLAN task text and the acceptance clauses `/start-task`
    derives. It never sees the implementation plan. Each test fails for the right reason, or is
    marked as guarding existing behavior. The tests are committed alone with a `Test-lock: <id>`
    trailer, before any implementation.
+   What the tests need but don't define (a test dependency such as fast-check, fixtures the task
+   delivers, a behavior-free seam) is committed first, on its own, as test infrastructure.
 2. **The lock is a script, not a promise.** `npm run tests:locked -- <id>` (`scripts/tests-locked.ts`)
    fails if, after the lock commit, any test file (`*.test.ts[x]`, `__snapshots__/`, `fixtures/`,
    `e2e/`) was modified, deleted or added: committed, staged, unstaged or untracked. New snapshot
