@@ -136,7 +136,7 @@ export function buildContext(input: ContextInput): string {
     lines.push(`Next task: ${next}${title.length > 0 ? ` ${title}` : ''}`);
     lines.push(rulesLine(next, input.schedule));
     lines.push(
-      `Workflow: \`/start-task ${next}\` (scope, branch, plan) → implement → \`/finish-task\` (check, review, tick, commit). Read the task in ${PLAN_PATH} first.`,
+      `Workflow: \`/start-task ${next}\` (scope, branch, plan, tests locked by the test writer) → implement against them → \`/finish-task\` (check and lock, independent review, tick, commit). Read the task in ${PLAN_PATH} first.`,
     );
     lines.push(
       `Until the MVP ships (4a), prefer the whole phase: \`/run-phase ${phase}\` (one branch and PR per phase; stops for human steps; the user merges).`,

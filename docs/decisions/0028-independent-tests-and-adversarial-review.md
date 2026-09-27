@@ -85,7 +85,10 @@ model for review, a per-change retrospective log, and mutation testing (already 
 - `main` gets a commit whose tests fail (the test commit) before each implementation commit.
   `git bisect` has to skip `Test-lock:` commits.
 - The lock runs on the same machine as the agent it checks, so it's a guardrail, not a boundary:
-  an agent could rewrite history. The boundary is CI plus the user's review at merge.
+  an agent could rewrite history, or stop a test from running without touching a test file (an
+  exclude in `vitest.config.ts`, a `.gitignore` entry). CI can't be the boundary here: it doesn't
+  run the lock, and on a phase branch earlier locks fail by design. The boundary is the reviewer's
+  `TEST-lock` rule and the user's review at merge.
 - Reviewer probing takes longer, and the reviewer evals must be re-baselined after the prompt
   change.
 - A lock is checked while its task is open. A later task's lock commit may legitimately change

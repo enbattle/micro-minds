@@ -107,8 +107,10 @@ three roles are kept apart, each in a fresh context that never sees another's re
   when" clause of the phase to evidence.
 
 These checks run on the same machine as the agent they check, so they are guardrails against
-accidental or lazy weakening, not a boundary against deliberate tampering. The boundary is CI on
-the pull request and your review at merge.
+accidental or lazy weakening, not a boundary against deliberate tampering. CI doesn't run the lock
+(on a phase branch, earlier locks fail by design), and a test can be switched off without touching
+a test file (a `vitest.config.ts` exclude, a `.gitignore` entry). The boundary is the reviewer's
+`TEST-lock` rule and your review at merge.
 
 ## Where knowledge goes (memory policy)
 
