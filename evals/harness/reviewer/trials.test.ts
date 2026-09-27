@@ -10,6 +10,7 @@ import {
 } from './score.ts';
 import {
   aggregateCase,
+  cell,
   formatBaselineRow,
   formatFlaky,
   formatTrialsTable,
@@ -345,5 +346,16 @@ describe('formatBaselineRow', () => {
       report,
     });
     expect(row).toContain('m\\|x');
+  });
+});
+
+describe('cell', () => {
+  it.each([
+    ['a|b', 'a|b'],
+    ['a|b', 'a\\|b'],
+    ['C:path', 'C:\\path'],
+    ['line1\nline2\r\nline3', 'line1 line2 line3'],
+  ])('escapes %j', (input, expected) => {
+    expect(cell(input)).toBe(expected);
   });
 });

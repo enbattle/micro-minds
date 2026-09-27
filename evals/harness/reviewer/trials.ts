@@ -206,8 +206,9 @@ export interface BaselineRowInput {
   report: TrialsReport;
 }
 
-function cell(text: string): string {
-  return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+/** Makes text safe inside a Markdown table cell. Backslashes first, so `\|` can't unescape a pipe. */
+export function cell(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
 /**
