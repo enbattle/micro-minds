@@ -17,4 +17,5 @@ npm run check   # lint, typecheck, test
 - [docs/decisions/](docs/decisions/): architecture decision records
 - [docs/dev-harness.md](docs/dev-harness.md): the Claude Code harness for this repo (permissions,
   guard hook and its `~/.claude` exemption, agents, skills, evals)
+- [docs/deferred-practices.md](docs/deferred-practices.md): practices considered and deferred, with revisit triggers
 - [CLAUDE.md](CLAUDE.md): rules for AI agents working in this repo

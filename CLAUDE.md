@@ -21,6 +21,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - `fixtures/<provider>/*.jsonl`: recorded, scrubbed hook payloads. The test backbone.
 - `docs/protocols/<provider>.md`: verified facts about each CLI's hooks (with the CLI version).
 - `docs/dev-harness.md`: how the Claude Code harness (settings, hooks, agents, skills, evals) works and how to change it.
+- `docs/deferred-practices.md`: practices we chose not to adopt yet, with the trigger that brings each back. Search it before proposing a new tool, hook or process.
 - `docs/decisions/`: ADRs. Add one for any decision that changes PLAN §2.
 - Every package has its own short `CLAUDE.md`. Read it before editing that package.
 
@@ -47,6 +48,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - Windows is first-class: use `path` APIs, not string concatenation; no POSIX-only shell in scripts; resolve `.cmd`/`.exe` binaries.
 - Check current dependency versions when installing. Don't pin from memory.
 - Before finishing: `npm run check` green, a `reviewer` subagent pass on the diff (paste the `git diff` output into its prompt; the reviewer has no shell), one conventional commit per task (`feat(server): …`), and the task's checkbox ticked in `docs/PLAN.md`.
+- Harness changes follow the principles in `docs/dev-harness.md` (procedures and checks beat prose; add agents or hooks only on evidence).
 - If the plan is wrong or ambiguous, stop and say so. Propose the plan edit rather than guessing.
 
 ## Code conventions
