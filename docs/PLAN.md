@@ -55,6 +55,7 @@ Core experience:
 | D20 | **Lightweight resume is in the MVP** | Server restarts (including `npm run dev` watch restarts) kill every PTY. Capture Claude's `session_id` from the `SessionStart` hook payload (never from `~/.claude`) and relaunch with `claude --resume <id>` in the same worktree. | If a separate PTY-owning process is needed (agents outliving the server) |
 | D21 | **Graceful shutdown with a warning** | Stopping the server with live agents asks for confirmation, then interrupts each CLI, waits a grace period, and kills the process tree. Worktrees are kept and sessions stay resumable. Nothing is deleted automatically. | — |
 | D22 | **Mood is derived and pure** | `mood(agent)` is a pure selector in `packages/shared`, fully tested. The scene only renders it. Working and idle are always visibly different. | Phase 4b |
+| D23 | **Node runs TypeScript directly (native type stripping); only the web app has a build step** | Node 24 strips types natively, so there is no `tsc` emit, `tsx` or build output for server, shared or relay code. This requires `erasableSyntaxOnly` (no enums or namespaces) and `.ts` import extensions. `tsc --noEmit` (TypeScript 7) is used for type checking only. | If a published package ever needs emitted JS |
 
 Each decision gets a short ADR in `docs/decisions/NNNN-title.md`. Record new decisions the same way.
 
@@ -413,9 +414,9 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 **Goal:** a repo where Claude Code can work safely and verifiably from day one, on Windows, macOS and Linux.
 
-- [ ] 0.1 Scaffold the npm-workspaces monorepo (`packages/shared`, `packages/hook-relay`, `apps/server`, `apps/web`), with a strict shared tsconfig, Biome and Vitest. Set `engines.node >=24` with `engine-strict=true` in `.npmrc`.
-- [ ] 0.2 Root scripts: `dev`, `build`, `test`, `lint`, `format`, `typecheck`, `check` (= lint + typecheck + test), `e2e`, `eval:harness`.
-- [ ] 0.3 **node-pty smoke test on Windows**: install it and spawn `cmd.exe`/`pwsh` through ConPTY. Record in an ADR whether prebuilt binaries worked or VS Build Tools were needed.
+- [x] 0.1 Scaffold the npm-workspaces monorepo (`packages/shared`, `packages/hook-relay`, `apps/server`, `apps/web`), with a strict shared tsconfig, Biome and Vitest. Set `engines.node >=24` with `engine-strict=true` in `.npmrc`.
+- [x] 0.2 Root scripts: `dev`, `build`, `test`, `lint`, `format`, `typecheck`, `check` (= lint + typecheck + test), `eval:harness` (`e2e` is added with Playwright in task 3.9).
+- [x] 0.3 **node-pty smoke test on Windows**: install it and spawn `cmd.exe`/`pwsh` through ConPTY. Record in an ADR whether prebuilt binaries worked or VS Build Tools were needed.
 - [ ] 0.4 Root `CLAUDE.md` plus a short `CLAUDE.md` in each package (its purity and I/O rules, and its test command).
 - [ ] 0.5 `.claude/settings.json`: allow `npm run *`, `npm test *`, `npx biome *` and read-only git commands; deny `.env*` reads, provider config dirs, `git push`, `rm -rf`; a `PostToolUse` Biome-format hook on Edit/Write.
 - [ ] 0.6 `.claude/hooks/guard.mjs` (a cross-platform Node script): a `PreToolUse` guard that blocks Bash/PowerShell/Read commands touching `~/.claude`, `~/.gemini`, `~/.codex` or `.env*`. It's defense in depth, because deny rules alone don't catch `cat ~/.claude/...`.
@@ -423,7 +424,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [ ] 0.8 `.claude/skills/`: `phase-status`, `new-adapter` (the adapter checklist) and `record-fixture` (the scrub-and-commit workflow).
 - [ ] 0.9 Harness evals (§11.1): `evals/harness/` with planted-violation diffs and a runner script.
 - [ ] 0.10 GitHub Actions: `npm run check` on ubuntu, macos and windows.
-- [ ] 0.11 ADRs 0001–0022 from §2.
+- [ ] 0.11 ADRs 0001–0023 from §2.
 
 **Done when:** `npm run check` passes locally (Windows) and in CI on all 3 operating systems; Claude Code runs `npm run check` with no prompts; a blocked command is shown to be blocked by both the deny rule and the guard hook; `npm run eval:harness` runs.
 

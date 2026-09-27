@@ -7,9 +7,9 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 ## Commands
 
 - `npm run dev`: run server and web in watch mode
-- `npm run check`: lint, typecheck and test. **Must pass before any task is done.**
+- `npm run check`: lint (Biome, warnings are errors), typecheck (`tsc` 7) and test (Vitest). **Must pass before any task is done.**
 - `npm test` (all packages) · `npm test -w @micro-minds/<pkg>` (one package)
-- `npm run e2e`: Playwright smoke tests (fake provider only)
+- `npm run e2e`: Playwright smoke tests, fake provider only (added in task 3.9)
 - `npm run eval:harness`: AI-harness evals (PLAN §11.1)
 
 ## Layout
@@ -51,5 +51,8 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 ## Code conventions
 
 - TypeScript strict, ESM, no `any`. Use `unknown` plus zod parsing at every boundary (hook payloads, WS frames, env, config).
+- Node runs `.ts` directly (PLAN D23): relative imports use the `.ts` extension, and there are no `enum`s, `namespace`s or parameter properties (`erasableSyntaxOnly`). Use `as const` objects and union types instead.
+- Read `process.env` only in config modules (`apps/server/src/config/`), where it's parsed with zod. Biome enforces this.
+- Each workspace declares every package it imports, dev tools included (Biome `noUndeclaredDependencies`).
 - IDs: ULID. Timestamps: ms epoch, stamped by the server.
 - UI state flows one way: WS → store → shared `reduce()` → components. Scene components read `AgentState` only and hold no business logic.
