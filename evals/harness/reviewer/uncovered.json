@@ -102,7 +102,7 @@
   },
   "SEC-token-exposure": {
     "due": "2.8",
-    "why": "UI token transport over the WS"
+    "why": "UI session cookie and bootstrap-code handling (ADR 0026)"
   },
   "SEC-network-call": {
     "due": "2.8",
@@ -139,5 +139,13 @@
   "SEC-usage-cost-source": {
     "due": "3.10",
     "why": "Usage display with the API-equivalent label"
+  },
+  "SEC-worktree-removal": {
+    "due": "2.5",
+    "why": "WorktreeManager removal and git hardening"
+  },
+  "SEC-terminal-escape": {
+    "due": "3.3",
+    "why": "Terminal drawer: xterm.js addons, link handling and clipboard"
   }
 }

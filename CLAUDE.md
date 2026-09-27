@@ -10,6 +10,8 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - `npm run check`: lint (Biome, warnings are errors), typecheck (`tsc` 7) and test (Vitest). **Must pass before any task is done.**
 - `npm test` (all packages) · `npm test -w @micro-minds/<pkg>` (one package)
 - `npm run e2e`: Playwright smoke tests, fake provider only (added in task 3.9)
+- `npm run test:coverage`: tests with coverage thresholds (also in CI)
+- `npm run lint:commits`: check commit subjects on your branch against Conventional Commits (CI checks commits and the PR title)
 - `npm run eval:harness`: AI-harness evals (PLAN §11.1)
 
 ## Layout
@@ -21,6 +23,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - `fixtures/<provider>/*.jsonl`: recorded, scrubbed hook payloads. The test backbone.
 - `docs/protocols/<provider>.md`: verified facts about each CLI's hooks (with the CLI version).
 - `docs/dev-harness.md`: how the Claude Code harness (settings, hooks, agents, skills, evals) works and how to change it.
+- `docs/engineering-standards.md`: every engineering practice and the check that enforces it. Add a row when you introduce one.
 - `docs/deferred-practices.md`: practices we chose not to adopt yet, with the trigger that brings each back. Search it before proposing a new tool, hook or process.
 - `docs/decisions/`: ADRs. Add one for any decision that changes PLAN §2.
 - Every package has its own short `CLAUDE.md`. Read it before editing that package.
@@ -29,7 +32,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 
 1. **Never read, copy, log or proxy anything under `~/.claude`, `~/.gemini`, `~/.codex`,** or any credential or `.env` file. The dev harness exempts only Claude Code's own plans, memory and tool-results (ADR 0024, `docs/dev-harness.md`); app code gets no exemption.
 2. **Never modify the user's global CLI config.** Inject hooks per session only (PLAN §5.2).
-3. **Bind to `127.0.0.1` only.** The UI token and an Origin/Host check are required on every WS and control request.
+3. **Bind to `127.0.0.1` only.** The UI session cookie (from the one-time bootstrap, ADR 0026) and an Origin/Host check are required on every WS and control request. Served HTML never contains a secret.
 4. **Hook tokens are per session and only valid on that session's ingest endpoints (`POST /hooks`, `POST /otel/*`).** They must never grant WS or control access.
 5. **Hooks fail open.** The relay always exits 0, prints nothing to stdout, and times out fast.
 6. **Adapters set facts only** (`kind`, `tool.category`, `errorClass`). Health and severity are derived in `packages/shared` only.
