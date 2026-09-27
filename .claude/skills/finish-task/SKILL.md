@@ -16,7 +16,9 @@ Arguments: `$ARGUMENTS`. `--run-evals` means the user agrees to spend tokens on 
 **Two branch modes** (ADR 0027):
 
 - **Task branch** (`<type>/<id>-<slug>`): one task, one pull request. `BASE` means `--merge-base origin/main`.
-- **Phase branch** (`phase/<n>-<slug>`, run by `/run-phase`): one commit per task, one pull request for the phase. Earlier tasks are already committed and reviewed, so this task's change is only what's staged: `BASE` means comparing the index with `HEAD` (no extra flag).
+- **Phase branch** (`phase/<n>-<slug>`, run by `/run-phase`): one pull request for the phase. Earlier tasks are already committed and reviewed, so this task's change is its lock commit(s) plus what's staged: `BASE` means `<L>^`, the parent of the task's first `Test-lock: <id>` commit (`git log --format=%H --grep="^Test-lock: <id>$" origin/main..HEAD`, the last line). A task with no lock commit (docs only) uses `HEAD`.
+
+**Code tasks** (ADR 0028): a task whose change touches anything but docs (`*.md`), `spikes/` and reviewer eval-case data (`evals/harness/reviewer/cases/`) must already have its `Test-lock: <id>` commit from `/start-task` step 6. Each task ends as two or three commits: the lock commit (plus at most one revision), then the implementation commit this skill makes.
 
 ## Git state (captured before you read this)
 
@@ -35,13 +37,16 @@ Uncommitted changes (`git status --short`):
    - Stage the task's files by explicit path: `git add -- <path> ...`. Never `git add -A`, `git add .` or `git commit -a`: other sessions may share this tree.
    - Anything in `git status --short` that isn't the task's (another task, a scratch file): list it and **stop**. The user moves it out of the way; you don't stash, reset or delete it.
    - Pass when every `git status --short` line has a space in the second column and none is `??`.
-5. List the change: `git diff --cached BASE --name-only`. On a task branch that's `git diff --cached --merge-base origin/main --name-only` (the branch's commits plus the index, against where it left `origin/main`; `origin/main` is as of the last fetch). On a phase branch it's `git diff --cached --name-only` (this task only). Keep this file list for steps 2, 4 and 8.
+5. List the change: `git diff --cached BASE --name-only`. On a task branch that's `git diff --cached --merge-base origin/main --name-only` (the branch's commits plus the index, against where it left `origin/main`; `origin/main` is as of the last fetch). On a phase branch it's `git diff --cached <L>^ --name-only` (this task only). Keep this file list for steps 2, 4 and 8.
+6. **Code task without a lock commit:** **stop**. Its tests must come from the test writer first (`/start-task` step 6); tests the implementer wrote don't count.
 
 ## 1. `npm run check`
 
 Run `npm run check` on its own and gate on **its exit code**. Never pipe it (`| tail`, `| grep`, `| Select-Object`): the pipeline reports the last command's status, so a failed check followed by `&& git commit` would commit anyway. Long output is fine; the tool truncates it.
 
 Fail → **stop** and report which part failed (lint, typecheck or which test file).
+
+For a code task, then run `npm run tests:locked -- <id>` the same way (on a task branch; on a phase branch add `--base origin/main`). Fail → **stop**: a test was changed after the lock. Restore it from the lock commit, or use the one revision (`/start-task` step 6.6); never edit it yourself.
 
 ## 2. Coverage
 
@@ -54,15 +59,28 @@ If the file list touches `apps/`, `packages/`, `.claude/hooks/` or `evals/`, run
 3. **Overdue:** no entry in the working `uncovered.json` may have a `due` task that's ticked in `docs/PLAN.md` (step 1 ran `coverage.test.ts`, so this should already hold).
 4. **Run the new cases** (`evals/harness/README.md`, "Adding a case"): `npm run eval:harness -- <case> ...`. It spends tokens: run it only with `--run-evals`; otherwise ask the user and **stop** until they answer. If they decline, record "not run" for the PR body.
 
-## 4. Reviewer pass
+## 4. Adversarial review (ADR 0028)
 
-1. Produce the diff: `git diff --cached BASE` (plus `--stat` for the summary), as in step 0.5.
-2. Invoke the `reviewer` subagent. It has no shell, so paste the **complete, untrimmed** diff into its prompt in a `diff` fence, preceded by the task id and the task line from PLAN. If the diff is too large for one prompt (roughly over 3,000 lines), split it by package with `-- <paths>`, run one reviewer per part, and tell each reviewer which part of the change it has.
-3. Parse the **last** fenced `json` block of each reply: `{ "findings": [{ ruleId, severity, file, line, summary }], "verdict" }`. If it's missing or doesn't parse, re-invoke once; if it fails again, **stop**. Any `blocker` or `major` finding counts as changes requested, whatever the verdict says.
-4. **blocker/major:** fix it within the task's scope, re-stage (step 0.4), and restart from step 1. After 3 review rounds with blockers or majors left, **stop** and report them.
+You implemented this change, so you don't review it, and you don't brief the reviewer: it gets artifacts only.
+
+1. **Snapshot the repository** for step 4.4: `git rev-parse HEAD`, `git status --porcelain -uall`, and `git diff --cached | git hash-object --stdin`. Keep the three outputs.
+2. **Invoke the `reviewer` subagent** (never a fork) with exactly this prompt and nothing else. No summary of the change, no claim that checks pass, no rationale:
+
+   ```
+   Review task <id> of micro-minds. mode: standard
+   Task (docs/PLAN.md): <the task line, verbatim>
+   Acceptance clauses: <the clauses from /start-task step 4.6, verbatim>
+   Branch mode: <task|phase>. The change: git diff --cached <BASE>
+   Code task: <yes|no> (if yes, the test lock: npm run tests:locked -- <id><phase: --base origin/main>)
+   ```
+
+3. Parse the **last** fenced `json` block: `{ findings: [{ ruleId, severity, file, line, summary, introduced }], probed, externalSurface, verdict }`. If it's missing, doesn't parse, or `probed` is empty, re-invoke once; if it fails again, **stop**. Any **introduced** `blocker` or `major` finding counts as changes requested, whatever the verdict says. Findings with `introduced: false` never block; list them in the PR body.
+4. **Check the reviewer changed nothing:** repeat step 4.1. Any difference: **stop** and report it. Don't use that review.
+5. **Security pass.** If `docs/security/threat-model.md` has a row naming this task (`planned: task <id>` or `tasks …, <id>`), or the reviewer set `externalSurface: true`, invoke a second, fresh `reviewer` with the same prompt but `mode: security`, and snapshot around it the same way. Its findings join the first reviewer's. Record "not needed" otherwise.
+6. **blocker/major (introduced):** fix it within the task's scope, re-stage (step 0.4), and restart from step 1. Never fix a finding by editing a locked test (step 1). After **2** review rounds with blockers or majors left, **stop** and report them: repeated rejection means the task or the approach is wrong, which the user decides.
    - If you believe a finding is a false positive, don't skip it: **stop** and show the user the evidence. A confirmed false positive is an eval trigger (`evals/harness/README.md`, "Triggers"); note it for a follow-up.
-5. **minor:** fix it (and restart from step 1), or write a one-line justification for the PR body.
-6. Keep the final verdict, the rounds it took, and the findings fixed or justified, for step 8.
+7. **minor:** fix it (and restart from step 1), or write a one-line justification for the PR body.
+8. Keep, for step 8: the final verdict, the rounds it took, the findings fixed or justified, the already-present findings, the reviewer's `probed` list, and the security pass result.
 
 ## 5. Tick the task
 
@@ -122,11 +140,14 @@ Task <id> (docs/PLAN.md §10).
 - [x] `npm run check`
 - [x] `npm run test:coverage` (or: not needed, <why>)
 - [x] Reviewer eval cases for rules due with <id>: <case dirs> (`npm run eval:harness -- <cases>`: pass / not run)
+- [x] Tests by the test writer, locked in <sha> (`npm run tests:locked -- <id>`: pass) (or: not a code task)
 - [ ] CI green on ubuntu, macos and windows
 - [ ] <any manual check from the task text or the phase's "Done when">
 
 ## Reviewer
-Verdict: approve after <n> round(s). Fixed: <ruleId: one line each>. Minors not fixed: <ruleId: justification>.
+Verdict: approve after <n> round(s). Fixed: <ruleId: one line each>. Minors not fixed: <ruleId: justification>. Already present (not caused by this change): <ruleId: one line each, or "none">.
+Probed: <the reviewer's probed list, one line each>.
+Security pass: <verdict and findings / not needed (no threat-model row, no external surface)>.
 
 ## Docs
 - <standards, threat model, ADR, protocol doc changes, or "none">
@@ -137,7 +158,9 @@ Verdict: approve after <n> round(s). Fixed: <ruleId: one line each>. Minors not 
 ```markdown
 ### <id> `<sha>` <subject>
 - <what changed, one bullet per area>
-- Checks: check pass; coverage <pass / not needed>; eval cases <cases / none due>; reviewer approve after <n> round(s) (<fixed or justified findings, or "no findings">)
+- Checks: check pass; tests locked in <sha> (or not a code task); coverage <pass / not needed>; eval cases <cases / none due>; reviewer approve after <n> round(s) (<fixed or justified findings, or "no findings">); security pass <result / not needed>
+- Probed: <the reviewer's probed list, condensed>
+- Already present: <findings the change didn't cause, or "none">
 - Manual: <checks the user still has to do, or "none">
 ```
 
@@ -153,7 +176,7 @@ Verdict: approve after <n> round(s). Fixed: <ruleId: one line each>. Minors not 
 | 1 check | pass |
 | 2 coverage | pass / not needed (<why>) |
 | 3 eval schedule | <rules due> covered by <cases>; new cases run: pass / not run |
-| 4 reviewer | approve after <n> round(s); <k> fixed, <m> minor justified |
+| 4 reviewer | approve after <n> round(s); <k> fixed, <m> minor justified; security pass <result / not needed> |
 | 5 tick | [x] <id>; phase gate: n/a / pass (<baseline row>) |
 | 6 docs | <files changed> |
 | 7 commit | <sha> <subject>; lint:commits OK |

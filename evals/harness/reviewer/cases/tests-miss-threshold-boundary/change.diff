@@ -1,0 +1,87 @@
+diff --git a/packages/shared/src/severity.test.ts b/packages/shared/src/severity.test.ts
+new file mode 100644
+index 0000000..a82dd20
+--- /dev/null
++++ b/packages/shared/src/severity.test.ts
+@@ -0,0 +1,35 @@
++import { describe, expect, it } from 'vitest';
++import { DEFAULT_FAILURE_THRESHOLDS, healthForFailures, recentFailures } from './severity.ts';
++
++const MIN = 60_000;
++const NOW = 1_800_000_000_000;
++
++describe('healthForFailures', () => {
++  it.each([
++    { name: 'no failures → ok', times: [], expected: 'ok' },
++    { name: 'one failure → notice, not error', times: [NOW - MIN], expected: 'notice' },
++    { name: 'two failures → notice', times: [NOW - 2 * MIN, NOW - MIN], expected: 'notice' },
++    {
++      name: 'four failures in 5 min → warning',
++      times: [NOW - 4 * MIN, NOW - 3 * MIN, NOW - 2 * MIN, NOW - MIN],
++      expected: 'warning',
++    },
++    {
++      name: 'old failures outside the window → ok',
++      times: [NOW - 20 * MIN, NOW - 15 * MIN, NOW - 10 * MIN, NOW - 6 * MIN],
++      expected: 'ok',
++    },
++  ])('$name', ({ times, expected }) => {
++    expect(healthForFailures(times, NOW)).toBe(expected);
++  });
++});
++
++describe('recentFailures', () => {
++  it('keeps failures inside the window, including the edge', () => {
++    const edge = NOW - DEFAULT_FAILURE_THRESHOLDS.windowMs;
++    expect(recentFailures([edge - 1, edge, NOW], NOW, DEFAULT_FAILURE_THRESHOLDS)).toEqual([
++      edge,
++      NOW,
++    ]);
++  });
++});
+diff --git a/packages/shared/src/severity.ts b/packages/shared/src/severity.ts
+new file mode 100644
+index 0000000..47667a8
+--- /dev/null
++++ b/packages/shared/src/severity.ts
+@@ -0,0 +1,40 @@
++// Health from tool failures (PLAN §6). Pure: `now` comes from the event or the clock.tick that
++// triggered the evaluation (hard rule 9), never from Date.now().
++
++export interface FailureThresholds {
++  /** How far back failures count, in ms (PLAN §6: 5 minutes). */
++  windowMs: number;
++  /** Failures within the window that turn health amber (PLAN §6: 3). */
++  warnFailures: number;
++}
++
++export const DEFAULT_FAILURE_THRESHOLDS: FailureThresholds = {
++  windowMs: 5 * 60_000,
++  warnFailures: 3,
++};
++
++export type FailureHealth = 'ok' | 'notice' | 'warning';
++
++/** Failures that still count at `now`: inside the window, oldest first. */
++export function recentFailures(
++  failureTimes: readonly number[],
++  now: number,
++  cfg: FailureThresholds,
++): number[] {
++  return failureTimes.filter((t) => now - t <= cfg.windowMs);
++}
++
++/**
++ * One failure is a notice, not a problem. Repeated failures inside the window are a warning.
++ * "Repeated" means more failures than the threshold, so a single retry burst doesn't flash amber.
++ */
++export function healthForFailures(
++  failureTimes: readonly number[],
++  now: number,
++  cfg: FailureThresholds = DEFAULT_FAILURE_THRESHOLDS,
++): FailureHealth {
++  const recent = recentFailures(failureTimes, now, cfg);
++  if (recent.length > cfg.warnFailures) return 'warning';
++  if (recent.length > 0) return 'notice';
++  return 'ok';
++}

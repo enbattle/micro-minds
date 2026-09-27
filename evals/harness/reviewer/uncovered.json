@@ -116,10 +116,6 @@
     "due": "2.14",
     "why": "Usage capture configures per-session OpenTelemetry"
   },
-  "GEN-correctness": {
-    "due": "2.14",
-    "why": "Catch-all; use a realistic server bug from Phase 2"
-  },
   "GEN-error-handling": {
     "due": "2.14",
     "why": "Catch-all; use a realistic server bug from Phase 2"
@@ -147,5 +143,13 @@
   "SEC-terminal-escape": {
     "due": "3.3",
     "why": "Terminal drawer: xterm.js addons, link handling and clipboard"
+  },
+  "TEST-lock": {
+    "due": "2.1",
+    "why": "First task whose tests the test writer locks (ADR 0028)"
+  },
+  "TEST-criteria": {
+    "due": "2.1",
+    "why": "First task whose acceptance clauses are mapped to locked tests (ADR 0028)"
   }
 }

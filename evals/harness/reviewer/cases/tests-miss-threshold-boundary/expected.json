@@ -1,0 +1,5 @@
+{
+  "mustFind": ["GEN-correctness"],
+  "mustNotFind": ["HR9-impure-reducer", "ARCH-shared-io", "TEST-nondeterministic", "CONV-any"],
+  "notes": "Behavior bug the included tests miss (the cortex golden-task pattern, ADR 0028). PLAN §6 says >=3 tool.failed in 5 min is a warning, but healthForFailures uses `recent.length > cfg.warnFailures`, so exactly 3 failures stay a notice. The comment justifies it (\"a single retry burst doesn't flash amber\") and the tests pass because they check 2 and 4 failures, never 3. Time comes in as a parameter and the module does no I/O, so purity and determinism rules must not fire. A TEST-criteria finding for the untested boundary is also correct and not penalized."
+}

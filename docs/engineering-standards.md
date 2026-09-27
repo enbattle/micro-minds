@@ -78,6 +78,9 @@ in PRs, with no automated check).
 | Guard hook behavior | 215+ deterministic guard tests in CI | Enforced |
 | The harness is internally consistent: hooks exist and are registered and tested, matchers use real tool names, the guard and settings agree on exemptions, agent and skill frontmatter is valid, hard-rule numbering matches the reviewer catalog | `evals/harness/integrity/` (CI) | Enforced |
 | Sessions start with live context (branch, next task, eval rules due, dirty tree) rather than a longer CLAUDE.md | `SessionStart` hook `session-context.ts`, tested in `evals/harness/session/` | Enforced |
+| Tests for a code task are written first by a separate, fresh `test-writer`, from the task text only, then locked; the implementer never edits them | `/start-task` step 6; `scripts/tests-locked.ts` (`npm run tests:locked`), its planted-violation tests in CI; `/finish-task` step 1; reviewer `TEST-lock` (ADR 0028) | Enforced |
+| Review is independent and adversarial: artifact-only input, re-runs the checks, probes failure cases, shows what it probed, never changes the repository; a security pass where due | `reviewer` agent; `/finish-task` step 4 (fixed prompt, before/after snapshot); eval parser rejects an empty `probed` (ADR 0028) | Enforced (probed, snapshot); convention (prompt content) |
+| A phase run ends with a completeness audit of every task and "Done when" clause | `/run-phase` step 3 | Convention |
 | The task workflow is a procedure, not prose | `/start-task` (plan before code; Edit and Write disabled until you approve), `/finish-task` (ordered gates) and `/run-phase` (a whole phase, stopping for human steps) | Convention: skills, evals scheduled in 2.15 |
 | Every reviewer rule has an eval case, or one is scheduled | `coverage.test.ts` reads PLAN checkboxes (CI) | Enforced |
 | Reviewer quality does not regress | `npm run eval:harness -- --trials 3` at every phase gate; baseline history | Enforced at phase gates |

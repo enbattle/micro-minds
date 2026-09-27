@@ -36,7 +36,7 @@ Every change to the harness is judged against these, in order:
 | Guard hook | `.claude/hooks/guard.ts` (`PreToolUse`) | Second layer for credential and `.env` protection (see below) |
 | Format hook | `.claude/hooks/format.ts` (`PostToolUse`) | Runs Biome on every file Claude edits |
 | Session context hook | `.claude/hooks/session-context.ts` (`SessionStart`) | Injects live state (branch, next task, eval rules due with it, dirty tree) so CLAUDE.md stays small |
-| Subagents | `.claude/agents/` | `reviewer` (read-only diff review; pass it the `git diff` output, since it has no shell), `test-writer` |
+| Subagents | `.claude/agents/` | `test-writer` (writes the failing tests before any implementation, from the task text only), `reviewer` (adversarial, read-only review with a shell to re-run checks and probe; also the security pass). See "Independent tests and review" |
 | Workflow skills | `.claude/skills/start-task`, `finish-task`, `run-phase` | Turn CLAUDE.md's task workflow into procedures: scope and plan a task; check, review, tick, commit, push and open the PR; or run a whole phase as one PR. You merge |
 | Other skills | `.claude/skills/` | `phase-status`, `new-adapter`, `record-fixture` |
 | Harness evals | `evals/harness/` | Deterministic, in CI: guard, coverage schedule, session context, harness integrity, doc links and budgets. Manual (they spend tokens): reviewer evals |
@@ -50,18 +50,21 @@ Every change to the harness is judged against these, in order:
 1. `/phase-status` (optional) shows where the plan stands and what's next.
 2. `/start-task <id>` validates the task, sets up a branch, lists everything due with it
    (acceptance criteria, eval cases, scheduled standards), and plans before any code.
-3. Implement, tests first where CLAUDE.md requires it.
-4. `/finish-task` runs the gates in order (check, coverage, eval schedule, reviewer), ticks the
+3. For a code task, a fresh `test-writer` writes the failing tests, which are committed and
+   locked (`/start-task` step 6). Then implement against them, never editing a test.
+4. `/finish-task` runs the gates in order (check and test lock, coverage, eval schedule,
+   adversarial review and, where due, a security pass), ticks the
    checkbox, updates docs, commits, pushes the branch, opens the PR and waits for CI. It never
    merges: it ends with the merge command for you (ADR 0027). It reviews **what is staged**, so the
    check, the reviewer and the commit all see the same bytes. It's user-invoked only, because it
    commits and pushes.
 
 **Whole phases:** `/run-phase <n>` repeats steps 2–4 for every remaining task of a phase on one
-branch, `phase/<n>-<slug>`, with one commit per task and one draft PR that CI checks on every
-push. Starting it approves that phase's per-task plans, commits, pushes and eval runs. It stops
+branch, `phase/<n>-<slug>`, with a locked test commit and an implementation commit per task and
+one draft PR that CI checks on every push. Starting it approves that phase's per-task plans, commits, pushes and eval runs. It stops
 for steps only you can do or decide (for example Phase 1's recordings, or an ambiguous PLAN
-task), and at the end it runs the phase gate, marks the PR ready and hands you the merge. Run it
+task), and at the end it runs a completeness audit and the phase gate, marks the PR ready and hands you
+the merge. Run it
 again to resume after a stop.
 
 **Which to use:** until the MVP ships (Phase 4a), `/run-phase` is the default: the aim is a usable
@@ -73,6 +76,39 @@ Claude can't change its own permissions: changes to `.claude/settings.json` are 
 Flags: `/start-task <id> --branch` creates the proposed branch without asking.
 `/finish-task --run-evals` allows the token-spending eval runs; without it the skill asks first.
 `/run-phase` always runs them (starting it is the approval).
+
+## Independent tests and review
+
+ADR 0028. One context that plans, tests, implements and briefs its own reviewer grades itself, so
+three roles are kept apart, each in a fresh context that never sees another's reasoning:
+
+| Role | Gets | Never |
+|---|---|---|
+| `test-writer` | The task text and its acceptance clauses | Sees the implementation plan; writes production code |
+| Implementer (the main session) | The locked tests, the plan | Edits a test after the lock (`npm run tests:locked` fails) |
+| `reviewer` | The task text, the clauses and the command that shows the diff | Gets the implementer's summary or claims; changes the repository |
+
+- **Locked tests.** The test writer's files are committed alone with a `Test-lock: <id>` trailer.
+  `scripts/tests-locked.ts` then fails on any test path modified, deleted or added afterwards
+  (committed, staged, unstaged or untracked; new snapshot files excepted). A disputed test gets one
+  revision by a fresh test writer (`Revision-reason:` trailer); the script refuses a third lock
+  commit, so a second dispute goes to you. A lock is checked while its task is open: the next
+  task's lock commit may change the same tests again.
+- **Adversarial review.** The reviewer's mandate is the strongest case against the change. It
+  re-runs `npm run check` and the test lock, matches each clause to a test, builds failure cases and
+  probes them, and lists what it probed; the eval parser rejects a review with an empty `probed`
+  list. Findings the change didn't cause are marked and never block. Two rounds, then you decide.
+- **Read-only, verified.** The reviewer has a shell but must not change anything; `/finish-task`
+  compares `HEAD`, `git status` and the staged diff before and after its run.
+- **Security pass.** A second reviewer run in `mode: security` for tasks named in
+  `docs/security/threat-model.md` or changes the first reviewer flags as touching an external
+  surface.
+- **Completeness audit.** At the end of `/run-phase`, a fresh agent maps every task and "Done
+  when" clause of the phase to evidence.
+
+These checks run on the same machine as the agent they check, so they are guardrails against
+accidental or lazy weakening, not a boundary against deliberate tampering. The boundary is CI on
+the pull request and your review at merge.
 
 ## Where knowledge goes (memory policy)
 

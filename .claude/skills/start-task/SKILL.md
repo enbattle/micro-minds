@@ -59,16 +59,27 @@ Write the plan in this order. If the PLAN text is wrong or ambiguous, say so and
 
 1. **Scope:** one sentence. **Out of scope:** later tasks this could drift into (by id).
 2. **Files:** each path to create or change, with one line on why. Nothing outside the task.
-3. **Tests first:** each test file and the cases it gets, the fixtures they replay, and which ones must fail before the implementation (required for `packages/shared` and adapters).
+3. **Tests:** whether the task changes code and so needs the independent test writer (step 6; everything except docs, `spikes/` code and reviewer eval-case data), and the fixtures that exist for it. **Don't design the tests here**: the test writer derives them from the task text and the acceptance clauses in item 6, never from this plan (ADR 0028).
 4. **Eval cases:** for each rule from 3.5, a case directory name, the planted violation, and its `mustNotFind` neighbors.
 5. **Docs:** standards rows, threat-model rows, protocol docs, ADR (only if a PLAN §2 decision changes).
-6. **Acceptance checklist:** split the task text into atomic clauses. One checkbox per clause, each mapped to the test or check that proves it. Then add `npm run check`, `npm run test:coverage` (if `apps/`, `packages/`, `.claude/hooks/` or `evals/` change), the eval cases, and `/finish-task`.
+6. **Acceptance checklist:** split the task text into atomic clauses, each testable or marked manual-verify. They are the test writer's and the reviewer's only statement of the task besides its text, so write them from the task, not from your plan. One checkbox per clause. Then add `npm run check`, `npm run test:coverage` (if `apps/`, `packages/`, `.claude/hooks/` or `evals/` change), the eval cases, and `/finish-task`.
 7. **Commit:** the proposed Conventional Commit subject, for example `feat(server): add hook ingest and event store (2.7)`.
 8. **Risks and questions:** anything you need the user to decide.
 
 ## 5. Stop for approval
 
-End the turn with the output below. Stop here even for a task that touches two files or fewer; then the plan can be a few lines. After the user approves: create the branch first if it's still pending, then implement the plan, tests first, and tell the user to run `/finish-task` when done. If the user changes the plan, update it and ask again.
+End the turn with the output below. Stop here even for a task that touches two files or fewer; then the plan can be a few lines. After the user approves: create the branch first if it's still pending, run step 6 if the task changes code, then implement the plan, and tell the user to run `/finish-task` when done. If the user changes the plan, update it and ask again.
+
+## 6. Tests first, by the test writer, then locked (after approval)
+
+For a task that changes code (ADR 0028). `/run-phase` runs this step too.
+
+1. Invoke the `test-writer` subagent (never a fork: it must not inherit this conversation). Its prompt is exactly: the task id, the task line from PLAN verbatim, the acceptance clauses from step 4.6, and the phase's rules if it has a "Before you start" block. Nothing else: no plan, no file list, no hints about the implementation.
+2. When it returns, check `git status --short`: only test paths (`*.test.ts`, `*.test.tsx`, `__snapshots__/`, `fixtures/`, `e2e/`) may be new or changed. Anything else: **stop** and report it; don't commit it.
+3. Run the new tests (`npx vitest run <files>`) and confirm they fail as the test writer reported, apart from the ones it says guard existing behavior.
+4. Commit its files **unchanged**, alone: subject `test(<scope>): failing tests for <what> (<id>)`, body with the clause-to-test table from its report, then the trailers `Test-lock: <id>` and the co-author line. Use `git add -- <paths>` and `git commit -F <file outside the tree>`.
+5. `npm run tests:locked -- <id>` must pass. From here on, never edit, add or delete a test path for this task.
+6. **A disputed test.** If, while implementing, you believe a locked test is wrong, don't touch it. Invoke a fresh `test-writer` in revision mode with the task text, the clauses, the test and your objection in one paragraph. Commit whatever it changes as a second lock commit, with an extra `Revision-reason: <one line>` trailer. The lock script refuses a third lock commit: a second dispute **stops** the task for the user.
 
 ```
 ## Task $id: <title>
