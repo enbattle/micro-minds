@@ -29,8 +29,10 @@ const BIND: Expected = {
 const CLEAN: Expected = { mustFind: [], mustNotFind: [], notes: 'n' };
 
 function finding(ruleId: string, severity: Finding['severity'] = 'blocker'): Finding {
-  return { ruleId, severity, file: 'a.ts', line: 1, summary: 's' };
+  return { ruleId, severity, file: 'a.ts', line: 1, summary: 's', introduced: true };
 }
+
+const PROBE = { probed: ['bind address'], externalSurface: false };
 
 /** A trial of the planted `bind` case: 'pass' finds the rule, 'miss' doesn't, 'error' errors. */
 function bind(outcome: 'pass' | 'miss' | 'forbidden' | 'error', name = 'bind'): CaseScore {
@@ -41,14 +43,14 @@ function bind(outcome: 'pass' | 'miss' | 'forbidden' | 'error', name = 'bind'): 
       : outcome === 'forbidden'
         ? [finding('HR3-localhost-bind'), finding('HR8-raw-leak', 'minor')]
         : [finding('HR3-localhost-bind')];
-  return scoreCase(name, BIND, { findings, verdict: 'changes_requested' }, CATALOG);
+  return scoreCase(name, BIND, { findings, verdict: 'changes_requested', ...PROBE }, CATALOG);
 }
 
 function clean(outcome: 'pass' | 'fp' | 'error', name = 'clean'): CaseScore {
   if (outcome === 'error') return scoreErroredCase(name, CLEAN, 'boom');
   const findings = outcome === 'fp' ? [finding('GEN-correctness', 'major')] : [];
   const verdict = outcome === 'fp' ? 'changes_requested' : 'approve';
-  return scoreCase(name, CLEAN, { findings, verdict }, CATALOG);
+  return scoreCase(name, CLEAN, { findings, verdict, ...PROBE }, CATALOG);
 }
 
 describe('requiredPasses', () => {

@@ -27,12 +27,24 @@ const CATALOG = [
 ];
 
 function finding(ruleId: string, severity: Finding['severity'] = 'blocker'): Finding {
-  return { ruleId, severity, file: 'apps/server/src/http/listen.ts', line: 14, summary: 's' };
+  return {
+    ruleId,
+    severity,
+    file: 'apps/server/src/http/listen.ts',
+    line: 14,
+    summary: 's',
+    introduced: true,
+  };
 }
 
 function review(findings: Finding[]): ReviewOutput {
   const blocking = findings.some((f) => f.severity !== 'minor');
-  return { findings, verdict: blocking ? 'changes_requested' : 'approve' };
+  return {
+    findings,
+    verdict: blocking ? 'changes_requested' : 'approve',
+    probed: ['bind address'],
+    externalSurface: false,
+  };
 }
 
 function expected(mustFind: string[], mustNotFind: string[] = []): Expected {
@@ -87,7 +99,35 @@ describe('parseReviewOutput', () => {
       { ruleId: 'TEST-missing', severity: 'major', file: 'x.ts', line: null, summary: 'No test' },
     ],
     verdict: 'changes_requested',
+    probed: ['listen() bind address'],
   };
+
+  /** A minimal valid finding as the reviewer writes it, without the optional `introduced`. */
+  const rawFinding = { ruleId: 'CONV-any', severity: 'minor', file: 'a.ts', line: 1, summary: 's' };
+
+  /** The reviewer's output: a valid clean review with `overrides` merged over it. */
+  function output(overrides: Record<string, unknown> = {}): string {
+    return fenced(
+      JSON.stringify({ findings: [], verdict: 'approve', probed: ['bind address'], ...overrides }),
+    );
+  }
+
+  /** The same output with `key` removed from the top level. */
+  function outputWithout(key: string): string {
+    const data: Record<string, unknown> = {
+      findings: [],
+      verdict: 'approve',
+      probed: ['bind address'],
+    };
+    delete data[key];
+    return fenced(JSON.stringify(data));
+  }
+
+  function errorOf(text: string): string {
+    const result = parseReviewOutput(text);
+    expect(result.ok).toBe(false);
+    return result.ok ? '' : result.error;
+  }
 
   it('parses a valid block and trims rule ids', () => {
     const result = parseReviewOutput(`## Summary\n…\n${fenced(JSON.stringify(valid))}`);
@@ -100,47 +140,165 @@ describe('parseReviewOutput', () => {
     ]);
   });
 
-  it('accepts a clean review with no findings', () => {
-    const result = parseReviewOutput(fenced('{"findings":[],"verdict":"approve"}'));
-    expect(result).toEqual({ ok: true, value: { findings: [], verdict: 'approve' } });
+  it('accepts a clean review with no findings, defaulting externalSurface to false', () => {
+    const result = parseReviewOutput(
+      fenced('{"findings":[],"verdict":"approve","probed":["listen() bind address"]}'),
+    );
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        findings: [],
+        verdict: 'approve',
+        probed: ['listen() bind address'],
+        externalSurface: false,
+      },
+    });
   });
 
   it.each([
     { name: 'missing block', text: 'No findings.', error: 'no ```json block' },
     { name: 'invalid JSON', text: fenced('{"findings":[],}'), error: 'not valid JSON' },
     { name: 'array root', text: fenced('[]'), error: 'not an object' },
-    {
-      name: 'findings not array',
-      text: fenced('{"findings":{},"verdict":"approve"}'),
-      error: '"findings"',
-    },
-    { name: 'bad verdict', text: fenced('{"findings":[],"verdict":"lgtm"}'), error: '"verdict"' },
+    { name: 'findings not array', text: output({ findings: {} }), error: '"findings"' },
+    { name: 'bad verdict', text: output({ verdict: 'lgtm' }), error: '"verdict"' },
     {
       name: 'bad severity',
-      text: fenced(
-        '{"findings":[{"ruleId":"CONV-any","severity":"critical","file":"a","line":1,"summary":"s"}],"verdict":"approve"}',
-      ),
+      text: output({ findings: [{ ...rawFinding, severity: 'critical' }] }),
       error: 'findings[0].severity',
     },
     {
       name: 'fractional line',
-      text: fenced(
-        '{"findings":[{"ruleId":"CONV-any","severity":"minor","file":"a","line":1.5,"summary":"s"}],"verdict":"approve"}',
-      ),
+      text: output({ findings: [{ ...rawFinding, line: 1.5 }] }),
       error: 'findings[0].line',
     },
     {
       name: 'empty rule id',
-      text: fenced(
-        '{"findings":[{"ruleId":" ","severity":"minor","file":"a","line":1,"summary":"s"}],"verdict":"approve"}',
-      ),
+      text: output({ findings: [{ ...rawFinding, ruleId: ' ' }] }),
       error: 'findings[0].ruleId',
     },
   ])('rejects $name', ({ text, error }) => {
-    const result = parseReviewOutput(text);
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error).toContain(error);
+    expect(errorOf(text)).toContain(error);
+  });
+
+  describe('probed (required)', () => {
+    it('keeps the probed strings exactly as given', () => {
+      const probed = ['  listen() bind address ', 'raw stripped from WS frames', 'x'];
+      const result = parseReviewOutput(output({ probed }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.probed).toEqual(probed);
+    });
+
+    it('rejects output without probed (the old contract)', () => {
+      expect(errorOf(outputWithout('probed'))).toContain('probed');
+    });
+
+    it.each([
+      { name: 'null', probed: null },
+      { name: 'a string', probed: 'bind address' },
+      { name: 'an object', probed: { a: 'bind address' } },
+      { name: 'an empty array', probed: [] },
+      { name: 'a number element', probed: ['bind address', 3] },
+      { name: 'a null element', probed: [null] },
+      { name: 'a nested array element', probed: [['bind address']] },
+      { name: 'an empty string element', probed: ['bind address', ''] },
+      { name: 'a whitespace-only element', probed: [' \t\n '] },
+    ])('rejects probed as $name', ({ probed }) => {
+      expect(errorOf(output({ probed }))).toContain('probed');
+    });
+
+    it('rejects a missing probed on an approval with findings too', () => {
+      const text = fenced(JSON.stringify({ findings: [rawFinding], verdict: 'approve' }));
+      expect(errorOf(text)).toContain('probed');
+    });
+  });
+
+  describe('externalSurface (optional)', () => {
+    it.each([
+      { name: 'absent -> false', text: outputWithout('externalSurface'), expected: false },
+      { name: 'true -> true', text: output({ externalSurface: true }), expected: true },
+      { name: 'false -> false', text: output({ externalSurface: false }), expected: false },
+    ])('$name', ({ text, expected }) => {
+      const result = parseReviewOutput(text);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.externalSurface).toBe(expected);
+    });
+
+    it.each([
+      { name: 'the string "true"', value: 'true' },
+      { name: 'the number 1', value: 1 },
+      { name: 'the number 0', value: 0 },
+      { name: 'null', value: null },
+      { name: 'an array', value: [true] },
+      { name: 'an object', value: {} },
+    ])('rejects externalSurface as $name', ({ value }) => {
+      expect(errorOf(output({ externalSurface: value }))).toContain('externalSurface');
+    });
+  });
+
+  describe('introduced (optional, per finding)', () => {
+    it.each([
+      { name: 'absent -> true', finding: rawFinding, expected: true },
+      { name: 'true -> true', finding: { ...rawFinding, introduced: true }, expected: true },
+      { name: 'false -> false', finding: { ...rawFinding, introduced: false }, expected: false },
+    ])('$name', ({ finding, expected }) => {
+      const result = parseReviewOutput(output({ findings: [finding] }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.findings[0]?.introduced).toBe(expected);
+    });
+
+    it('defaults each finding independently', () => {
+      const findings = [
+        { ...rawFinding, introduced: false },
+        rawFinding,
+        { ...rawFinding, introduced: true },
+      ];
+      const result = parseReviewOutput(output({ findings, verdict: 'changes_requested' }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.findings.map((f) => f.introduced)).toEqual([false, true, true]);
+    });
+
+    it.each([
+      { name: 'the string "false"', value: 'false' },
+      { name: 'the number 0', value: 0 },
+      { name: 'null', value: null },
+      { name: 'an object', value: {} },
+    ])('rejects introduced as $name, naming the finding index', ({ value }) => {
+      const findings = [rawFinding, { ...rawFinding, introduced: value }];
+      expect(errorOf(output({ findings }))).toContain('findings[1].introduced');
+    });
+  });
+
+  it('ignores unknown keys at the top level and on findings', () => {
+    const text = output({
+      findings: [{ ...rawFinding, fix: 'use unknown', confidence: 0.9 }],
+      verdict: 'changes_requested',
+      probed: ['types at the WS boundary'],
+      externalSurface: true,
+      summary: 'extra',
+      reviewedAt: 123,
+    });
+    expect(parseReviewOutput(text)).toEqual({
+      ok: true,
+      value: {
+        findings: [
+          {
+            ruleId: 'CONV-any',
+            severity: 'minor',
+            file: 'a.ts',
+            line: 1,
+            summary: 's',
+            introduced: true,
+          },
+        ],
+        verdict: 'changes_requested',
+        probed: ['types at the WS boundary'],
+        externalSurface: true,
+      },
+    });
   });
 });
 
