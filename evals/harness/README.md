@@ -109,7 +109,7 @@ writes the code it governs:
 
 So the list can only shrink. A new rule may be scheduled against future work, but never against
 work that is already done: that has to come with a case in the same PR. When you start a task,
-check which rules are due with it (the planned `/start-task` skill will surface them).
+check which rules are due with it (`/start-task <id>` lists them, and `/finish-task` confirms they were added; its `--run-evals` flag authorizes running the new cases).
 
 ### Triggers
 
