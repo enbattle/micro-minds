@@ -263,6 +263,25 @@ const CASES: readonly Case[] = [
     file('Read', '/home/alice/.claude/projects/slug/tool-results/out-1.txt'),
     'allow',
   ],
+  // Tool results are read-only (ADR 0024), matching the settings deny rules.
+  [
+    'Edit tool-results denied',
+    LINUX,
+    file('Edit', '/home/alice/.claude/projects/slug/tool-results/out-1.txt'),
+    'homeConfig',
+  ],
+  [
+    'Write tool-results denied (win)',
+    WIN,
+    file('Write', 'C:\\Users\\alice\\.claude\\projects\\slug\\tool-results\\out.txt'),
+    'homeConfig',
+  ],
+  [
+    'Edit memory still allowed',
+    LINUX,
+    file('Edit', '/home/alice/.claude/projects/slug/memory/MEMORY.md'),
+    'allow',
+  ],
   ['bash cat plan via ~', LINUX, bash('cat ~/.claude/plans/p.md'), 'allow'],
   // Everything else in ~/.claude stays blocked, including near misses and globs.
   [

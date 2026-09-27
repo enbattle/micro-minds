@@ -69,9 +69,22 @@
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.ts"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
+        "matcher": "Bash|PowerShell|Read|Edit|Write|NotebookEdit|Grep|Glob",
         "hooks": [
           {
             "type": "command",
@@ -84,7 +97,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
