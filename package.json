@@ -24,6 +24,7 @@
     "check": "npm run lint && npm run typecheck && npm test",
     "lint:commits": "node scripts/lint-commits.ts --range origin/main..HEAD",
     "lint:title": "node scripts/lint-commits.ts --title-text",
+    "tests:locked": "node scripts/tests-locked.ts",
     "eval:harness": "node evals/harness/reviewer/run.ts",
     "spike:sink": "node spikes/phase-1/sink.ts",
     "spike:settings": "node spikes/phase-1/settings.ts",
