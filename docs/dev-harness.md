@@ -107,7 +107,8 @@ three roles are kept apart, each in a fresh context that never sees another's re
   (committed, staged, unstaged or untracked; new snapshot files excepted). A disputed test gets one
   revision by a fresh test writer (`Revision-reason:` trailer), only while the task is open and
   only from a clean lock. The script refuses a third lock commit, a revision after another task's
-  lock, and any test change between the original lock and the revision, so a revision can't carry
+  lock, a lock commit that is a merge, and any test change between the original lock and the
+  revision, so a revision can't carry
   an implementer's edit along. A second dispute goes to you. Test helpers are named
   `*.test-helpers.ts` so the lock covers them. A lock is checked while its task is open: the next
   task's lock commit may change the same tests again.
@@ -116,7 +117,8 @@ three roles are kept apart, each in a fresh context that never sees another's re
   probes them, and lists what it probed; the eval parser rejects a review with an empty `probed`
   list. Findings the change didn't cause are marked and never block. Two rounds, then you decide.
 - **Read-only, verified.** The reviewer has a shell but must not change anything; `/finish-task`
-  compares `HEAD`, `git status` and the staged diff before and after its run.
+  compares `HEAD`, `git status`, the staged diff, branches and tags, and the local git config before
+  and after its run.
 - **Security pass.** A second reviewer run in `mode: security` for tasks named in
   `docs/security/threat-model.md` or changes the first reviewer flags as touching an external
   surface.

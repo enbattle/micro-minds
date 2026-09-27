@@ -11,7 +11,7 @@
 //
 // A revision (the second lock commit) is also checked against the original lock: nothing may change
 // a test between them, and no other task may have locked tests in between (the revision would
-// reopen a closed unit).
+// reopen a closed unit). A lock commit may not be a merge: a merge hides what it changes.
 //
 // Exit: 0 the lock holds, 1 a lock rule is broken, 2 a usage or environment error (bad arguments,
 // an unresolvable --base, no git repository).
@@ -124,12 +124,12 @@ function commitsWithTrailers(cwd: string, base: string): LogEntry[] {
     });
 }
 
-/** Paths a commit adds, modifies or deletes relative to its first parent. */
 /** Number of parents a commit has (more than one: a merge). */
 function parentCount(cwd: string, sha: string): number {
   return git(cwd, ['rev-list', '--parents', '-n', '1', sha]).trim().split(/\s+/).length - 1;
 }
 
+/** Paths a commit adds, modifies or deletes relative to its first parent. */
 function changedPaths(cwd: string, sha: string): string[] {
   return nulSplit(
     git(cwd, ['diff-tree', '-r', '--root', '--no-commit-id', '--name-only', '-z', sha]),

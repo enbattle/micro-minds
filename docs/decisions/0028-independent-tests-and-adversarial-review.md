@@ -103,7 +103,8 @@ model for review, a per-change retrospective log, and mutation testing (already 
 - 2026-09-27, review round 4 (after merge): a revision could launder a test edit made between the
   original lock and the revision, and on a phase branch the reviewer's diff started after the
   test-infrastructure commit, so it never saw it. Now the lock script also compares the original
-  lock with the state just before the revision and refuses a revision after another task's lock;
+  lock with the state just before the revision, refuses a revision after another task's lock, and
+  refuses a lock commit that is a merge (a merge hides what it changes);
   the infrastructure commit carries a `Test-infra: <id>` trailer and the phase-branch diff starts
   before it; test helpers are named `*.test-helpers.ts` and locked; the reviewer's snapshot also
   covers branches, tags and git config; the CLI reports usage and environment errors with exit 2.
