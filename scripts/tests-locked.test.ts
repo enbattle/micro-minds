@@ -536,7 +536,7 @@ describe('rule 6: modified', () => {
     {
       name: 'LF → CRLF with no text attributes is a real content change',
       act: (repo) =>
-        write(repo, 'src/impl.test.ts', content('src/impl.test.ts').replace('\n', '\r\n')),
+        write(repo, 'src/impl.test.ts', content('src/impl.test.ts').replaceAll('\n', '\r\n')),
       paths: ['src/impl.test.ts'],
     },
     {
