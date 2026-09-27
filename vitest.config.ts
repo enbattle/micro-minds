@@ -16,6 +16,7 @@ export default defineConfig({
       ],
       exclude: [
         '**/*.test.{ts,tsx}',
+        '**/*.test-helpers.{ts,tsx}',
         '**/*.config.ts',
         // CLI entry point for the token-spending reviewer evals (`npm run eval:harness`). It
         // spawns Claude Code, so it is never unit-tested; its logic lives in the tested modules

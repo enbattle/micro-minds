@@ -9,7 +9,12 @@
 // ignored. Content is compared as git blob ids (`git hash-object` applies the path's checkout
 // filters), so CRLF from checkout conversion is not a modification.
 //
-// Exit: 0 the lock holds, 1 a lock rule is broken, 2 usage error.
+// A revision (the second lock commit) is also checked against the original lock: nothing may change
+// a test between them, and no other task may have locked tests in between (the revision would
+// reopen a closed unit). A lock commit may not be a merge: a merge hides what it changes.
+//
+// Exit: 0 the lock holds, 1 a lock rule is broken, 2 a usage or environment error (bad arguments,
+// an unresolvable --base, no git repository).
 
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -22,6 +27,8 @@ export type LockProblemKind =
   | 'not-test-only'
   | 'no-reason'
   | 'not-ancestor'
+  | 'late-revision'
+  | 'merge-lock'
   | 'modified'
   | 'deleted'
   | 'added';
@@ -51,6 +58,7 @@ const MAX_LOCK_COMMITS = 2;
 /** Test paths: what the test writer may write and what the lock protects. Forward-slash paths. */
 export function isTestPath(repoPath: string): boolean {
   if (repoPath.endsWith('.test.ts') || repoPath.endsWith('.test.tsx')) return true;
+  if (repoPath.endsWith('.test-helpers.ts') || repoPath.endsWith('.test-helpers.tsx')) return true;
   if (repoPath.startsWith('fixtures/') || repoPath.startsWith('e2e/')) return true;
   return isSnapshotPath(repoPath);
 }
@@ -116,6 +124,11 @@ function commitsWithTrailers(cwd: string, base: string): LogEntry[] {
     });
 }
 
+/** Number of parents a commit has (more than one: a merge). */
+function parentCount(cwd: string, sha: string): number {
+  return git(cwd, ['rev-list', '--parents', '-n', '1', sha]).trim().split(/\s+/).length - 1;
+}
+
 /** Paths a commit adds, modifies or deletes relative to its first parent. */
 function changedPaths(cwd: string, sha: string): string[] {
   return nulSplit(
@@ -166,12 +179,41 @@ function workingBlobs(cwd: string, repoPaths: readonly string[]): Map<string, st
   return blobs;
 }
 
+/** Test paths -> blob ids in a tree-ish. */
+function testBlobs(cwd: string, treeish: string): Map<string, string> {
+  return new Map([...treeBlobs(cwd, treeish)].filter(([p]) => isTestPath(p)));
+}
+
+/**
+ * Test changes from one tree to another, reported with `suffix` in each detail. New snapshot
+ * files are noted instead of reported.
+ */
+function compareTrees(
+  from: Map<string, string>,
+  to: Map<string, string>,
+  suffix: string,
+  problems: LockProblem[],
+  notes: string[],
+): void {
+  for (const [repoPath, blob] of from) {
+    const now = to.get(repoPath);
+    if (now === undefined) problems.push({ kind: 'deleted', detail: `${repoPath} (${suffix})` });
+    else if (now !== blob) problems.push({ kind: 'modified', detail: `${repoPath} (${suffix})` });
+  }
+  for (const repoPath of [...to.keys()].sort()) {
+    if (from.has(repoPath)) continue;
+    if (isSnapshotPath(repoPath)) notes.push(`new snapshot ${repoPath} (${suffix}; allowed)`);
+    else problems.push({ kind: 'added', detail: `${repoPath} (${suffix})` });
+  }
+}
+
 export function checkLock(options: LockOptions): LockResult {
   const { cwd, taskId, base } = options;
   const problems: LockProblem[] = [];
   const notes: string[] = [];
 
-  const locks = commitsWithTrailers(cwd, base).filter((c) => c.locks.includes(taskId));
+  const commits = commitsWithTrailers(cwd, base);
+  const locks = commits.filter((c) => c.locks.includes(taskId));
   const effective = locks.at(-1);
   if (effective === undefined) {
     problems.push({
@@ -188,6 +230,14 @@ export function checkLock(options: LockOptions): LockResult {
     });
   }
   for (const lock of locks) {
+    // A merge hides what it changes (diff-tree lists nothing; `^` is only the first parent), so a
+    // lock commit must be an ordinary commit.
+    if (parentCount(cwd, lock.sha) > 1) {
+      problems.push({
+        kind: 'merge-lock',
+        detail: `lock commit ${lock.sha.slice(0, 7)} is a merge; commit the tests on their own`,
+      });
+    }
     for (const changed of changedPaths(cwd, lock.sha)) {
       if (!isTestPath(changed)) {
         problems.push({
@@ -204,11 +254,37 @@ export function checkLock(options: LockOptions): LockResult {
       detail: `revision lock ${revision.sha.slice(0, 7)} has no "Revision-reason:" trailer`,
     });
   }
+  const original = locks[0];
+  if (revision !== undefined && original !== undefined) {
+    // Another task's lock between the original and the revision: this unit was already closed.
+    const from = commits.indexOf(original);
+    const to = commits.indexOf(revision);
+    const others = new Set(
+      commits
+        .slice(from + 1, to)
+        .flatMap((c) => c.locks)
+        .filter((id) => id !== taskId),
+    );
+    for (const other of others) {
+      problems.push({
+        kind: 'late-revision',
+        detail: `revision ${revision.sha.slice(0, 7)} comes after task ${other}'s lock; revise only while the task is open`,
+      });
+    }
+    // Nothing may change a test between the original lock and the revision.
+    compareTrees(
+      testBlobs(cwd, original.sha),
+      testBlobs(cwd, `${revision.sha}^`),
+      `changed before revision ${revision.sha.slice(0, 7)}`,
+      problems,
+      notes,
+    );
+  }
   if (!gitOk(cwd, ['merge-base', '--is-ancestor', effective.sha, 'HEAD'])) {
     problems.push({ kind: 'not-ancestor', detail: `${effective.sha} is not an ancestor of HEAD` });
   }
 
-  const locked = new Map([...treeBlobs(cwd, effective.sha)].filter(([p]) => isTestPath(p)));
+  const locked = testBlobs(cwd, effective.sha);
   const head = treeBlobs(cwd, 'HEAD');
   const index = indexBlobs(cwd);
   const untracked = untrackedPaths(cwd);
@@ -274,6 +350,14 @@ function main(argv: readonly string[]): number {
     return 2;
   }
   const cwd = process.cwd();
+  if (!gitOk(cwd, ['rev-parse', '--git-dir'])) {
+    console.error('tests-locked: not inside a git repository');
+    return 2;
+  }
+  if (ref !== undefined && !gitOk(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])) {
+    console.error(`tests-locked: --base ${ref} can't be resolved to a commit`);
+    return 2;
+  }
   let base = ref;
   if (base === undefined) {
     try {
@@ -283,7 +367,14 @@ function main(argv: readonly string[]): number {
       return 2;
     }
   }
-  const result = checkLock({ cwd, taskId, base });
+  let result: LockResult;
+  try {
+    result = checkLock({ cwd, taskId, base });
+  } catch (error) {
+    const message = error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error);
+    console.error(`tests-locked: git failed: ${message}`);
+    return 2;
+  }
   for (const problem of result.problems) console.log(`LOCK ${problem.kind}: ${problem.detail}`);
   for (const note of result.notes) console.log(`note: ${note}`);
   if (!result.ok) return 1;

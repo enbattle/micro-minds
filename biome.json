@@ -60,6 +60,8 @@
       "includes": [
         "**/*.test.ts",
         "**/*.test.tsx",
+        "**/*.test-helpers.ts",
+        "**/*.test-helpers.tsx",
         "**/*.config.ts",
         "packages/hook-relay/src/**",
         "apps/server/src/config/**",

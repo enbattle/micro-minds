@@ -16,7 +16,7 @@ Arguments: `$ARGUMENTS`. `--run-evals` means the user agrees to spend tokens on 
 **Two branch modes** (ADR 0027):
 
 - **Task branch** (`<type>/<id>-<slug>`): one task, one pull request. `BASE` means `--merge-base origin/main`.
-- **Phase branch** (`phase/<n>-<slug>`, run by `/run-phase`): one pull request for the phase. Earlier tasks are already committed and reviewed, so this task's change is its lock commit(s) plus what's staged: `BASE` means `<L>^`, the parent of the task's first `Test-lock: <id>` commit (`git log --format=%H --grep="^Test-lock: <id>$" origin/main..HEAD`, the last line). A task with no lock commit (docs only) uses `HEAD`.
+- **Phase branch** (`phase/<n>-<slug>`, run by `/run-phase`): one pull request for the phase. Earlier tasks are already committed and reviewed, so this task's change is its test-infrastructure commit (if any), its lock commit(s) and what's staged: `BASE` means the parent of the task's **first** commit carrying a `Test-infra: <id>` or `Test-lock: <id>` trailer (`git log --format=%H -E --grep="^Test-(infra|lock): <id>$" origin/main..HEAD`, the last line, then `^`). The reviewer must see the infrastructure commit to check it holds no implementation. A task with neither (docs only) uses `HEAD`.
 
 **Code tasks** (ADR 0028): a task whose change touches code or tests, as defined in `docs/dev-harness.md` ("Which tasks get locked tests"), must already have its `Test-lock: <id>` commit from `/start-task` step 6. Data and docs (fixtures, config, `*.md`, `spikes/`, eval-case data) need none. A code task ends as: an optional test-infrastructure commit, the lock commit (plus at most one revision), then the implementation commit this skill makes.
 
@@ -37,7 +37,7 @@ Uncommitted changes (`git status --short`):
    - Stage the task's files by explicit path: `git add -- <path> ...`. Never `git add -A`, `git add .` or `git commit -a`: other sessions may share this tree.
    - Anything in `git status --short` that isn't the task's (another task, a scratch file): list it and **stop**. The user moves it out of the way; you don't stash, reset or delete it.
    - Pass when every `git status --short` line has a space in the second column and none is `??`.
-5. List the change: `git diff --cached BASE --name-only`. On a task branch that's `git diff --cached --merge-base origin/main --name-only` (the branch's commits plus the index, against where it left `origin/main`; `origin/main` is as of the last fetch). On a phase branch it's `git diff --cached <L>^ --name-only` (this task only). Keep this file list for steps 2, 4 and 8.
+5. List the change: `git diff --cached BASE --name-only`. On a task branch that's `git diff --cached --merge-base origin/main --name-only` (the branch's commits plus the index, against where it left `origin/main`; `origin/main` is as of the last fetch). On a phase branch it's the same command with BASE as defined above (the parent of the task's first `Test-infra: <id>` or `Test-lock: <id>` commit), so the list covers this task only, test infrastructure included. Keep this file list for steps 2, 4 and 8.
 6. **Code task without a lock commit:** **stop**. Its tests must come from the test writer first (`/start-task` step 6); tests the implementer wrote don't count.
 
 ## 1. `npm run check`
@@ -46,7 +46,7 @@ Run `npm run check` on its own and gate on **its exit code**. Never pipe it (`| 
 
 Fail → **stop** and report which part failed (lint, typecheck or which test file).
 
-For a code task, then run `npm run tests:locked -- <id>` the same way (on a task branch; on a phase branch add `--base origin/main`). It checks **only the unit that is open now**: an earlier task's lock is never re-checked, because a later task's lock commit may legitimately have changed the same tests (ADR 0028). Fail → **stop**: a test was changed after the lock. Restore it from the lock commit, or use the one revision (`/start-task` step 6.6); never edit it yourself.
+For a code task, then run `npm run tests:locked -- <id>` the same way (on a task branch; on a phase branch add `--base origin/main`). It checks **only the unit that is open now**: an earlier task's lock is never re-checked, because a later task's lock commit may legitimately have changed the same tests (ADR 0028). Fail → **stop**: a test was changed after the lock. Restore it from the lock commit (`git restore --source=<lock sha> -- <path>`, or revert the commit that changed it), and only once the lock passes again consider the one revision (`/start-task` step 6.6); never edit it yourself.
 
 ## 2. Coverage
 
@@ -63,7 +63,7 @@ If the file list touches `apps/`, `packages/`, `.claude/hooks/` or `evals/`, run
 
 You implemented this change, so you don't review it, and you don't brief the reviewer: it gets artifacts only.
 
-1. **Snapshot the repository** for step 4.4: `git rev-parse HEAD`, `git status --porcelain -uall`, and `git diff --cached | git hash-object --stdin`. Keep the three outputs.
+1. **Snapshot the repository** for step 4.4: `git rev-parse HEAD`, `git status --porcelain -uall`, `git diff --cached | git hash-object --stdin`, `git for-each-ref | git hash-object --stdin` (branches and tags) and `git config --local --list | git hash-object --stdin`. Keep the five outputs.
 2. **Invoke the `reviewer` subagent** (never a fork) with exactly this prompt and nothing else. No summary of the change, no claim that checks pass, no rationale:
 
    ```
