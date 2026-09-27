@@ -1,0 +1,5 @@
+{
+  "mustFind": ["HR1-credential-access"],
+  "mustNotFind": ["WIN-path-concat", "WIN-home-dir", "CONV-unvalidated-boundary", "CONV-any"],
+  "notes": "Preflight reads ~/.claude/.credentials.json to detect login (hard rule 1, D4, PLAN §5.6: login state is never checked by reading credential files). Paths use node:path and os.homedir(), and the file is zod-parsed, so those rules must not fire."
+}

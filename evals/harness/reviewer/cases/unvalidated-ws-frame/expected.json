@@ -1,0 +1,11 @@
+{
+  "mustFind": ["CONV-unvalidated-boundary"],
+  "mustNotFind": [
+    "HR3-localhost-bind",
+    "HR8-raw-leak",
+    "HR9-impure-reducer",
+    "HR11-auto-destructive",
+    "CONV-erasable-syntax"
+  ],
+  "notes": "Inbound WS frames are JSON.parse + cast to ClientFrame with no zod validation (PLAN §8). session.kill here is an explicit user action, so HR11 must not fire. A GEN-error-handling note about JSON.parse throwing is acceptable."
+}

@@ -1,0 +1,36 @@
+diff --git a/apps/server/src/lifecycle/crash-recovery.ts b/apps/server/src/lifecycle/crash-recovery.ts
+new file mode 100644
+index 0000000..fcb93af
+--- /dev/null
++++ b/apps/server/src/lifecycle/crash-recovery.ts
+@@ -0,0 +1,30 @@
++import { join } from 'node:path';
++import type { SessionStore } from '../store/session-store.ts';
++import type { ProcessInspector } from './process-inspector.ts';
++
++export interface RecoveryReport {
++  interrupted: string[];
++  orphansKilled: number[];
++}
++
++/** Startup crash recovery (PLAN §5.6 step 4). */
++export async function recoverSessions(
++  store: SessionStore,
++  inspector: ProcessInspector,
++): Promise<RecoveryReport> {
++  const home = process.env.MICROMINDS_HOME ?? join(inspector.homeDir(), '.micro-minds');
++  const interrupted: string[] = [];
++  const orphansKilled: number[] = [];
++  for (const session of store.listByStatus('running')) {
++    store.markInterrupted(session.id, 'crash_recovery');
++    interrupted.push(session.id);
++    // Verify by command line first: Windows reuses pids.
++    if (session.pid !== undefined && (await inspector.isOurCli(session.pid, session.cliPath))) {
++      // Nobody can see this CLI's terminal any more, so stop it before it burns plan usage.
++      await inspector.killTree(session.pid);
++      orphansKilled.push(session.pid);
++    }
++  }
++  await inspector.pruneWorktrees(join(home, 'worktrees'));
++  return { interrupted, orphansKilled };
++}

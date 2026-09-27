@@ -1,0 +1,5 @@
+{
+  "mustFind": ["CONV-any", "CONV-erasable-syntax"],
+  "mustNotFind": ["HR9-impure-reducer", "ARCH-shared-io", "HR3-localhost-bind"],
+  "notes": "packages/shared gains an enum (not erasable, D23) and an isToolCategory(value: any) guard. Two planted convention violations in one file. The code is otherwise pure."
+}

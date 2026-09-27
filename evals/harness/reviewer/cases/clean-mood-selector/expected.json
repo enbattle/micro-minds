@@ -1,0 +1,11 @@
+{
+  "mustFind": [],
+  "mustNotFind": [
+    "HR9-impure-reducer",
+    "D22-impure-mood",
+    "CONV-any",
+    "CONV-erasable-syntax",
+    "TEST-missing"
+  ],
+  "notes": "Clean: a pure, exhaustive mood() selector following the PLAN §4.4 table order, with table-driven tests and a working-vs-idle distinctness test. No blocker or major finding is expected."
+}

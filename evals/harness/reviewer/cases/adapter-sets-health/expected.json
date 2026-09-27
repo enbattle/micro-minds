@@ -1,0 +1,5 @@
+{
+  "mustFind": ["HR6-adapter-sets-health"],
+  "mustNotFind": ["CONV-any", "HR3-localhost-bind", "HR8-raw-leak", "HR7-unknown-event-throws"],
+  "notes": "The Claude adapter returns health (error for exec failures) next to its facts. Health is derived only in packages/shared (hard rule 6, PLAN §6: a single tool failure is notice, never red). Returning undefined for other payloads is documented as falling through to kind unknown."
+}

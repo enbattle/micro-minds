@@ -1,0 +1,33 @@
+diff --git a/apps/server/src/worktrees/paths.ts b/apps/server/src/worktrees/paths.ts
+new file mode 100644
+index 0000000..94fe031
+--- /dev/null
++++ b/apps/server/src/worktrees/paths.ts
+@@ -0,0 +1,27 @@
++import { slugify } from './slug.ts';
++
++export interface WorktreeLocation {
++  dir: string;
++  branch: string;
++}
++
++/**
++ * Where a session's worktree lives: `<home>/worktrees/<repo-slug>/<sessionId>` (PLAN D12).
++ * `home` is MICROMINDS_HOME from the typed server config.
++ */
++export function worktreeLocation(
++  home: string,
++  repoPath: string,
++  sessionId: string,
++): WorktreeLocation {
++  const repoName = repoPath.split('/').filter(Boolean).at(-1) ?? 'repo';
++  return {
++    dir: home + '/worktrees/' + slugify(repoName) + '/' + sessionId,
++    branch: `micro-minds/${sessionId}`,
++  };
++}
++
++/** Per-session settings file passed to `claude --settings` (PLAN §5.2). */
++export function sessionSettingsFile(home: string, sessionId: string): string {
++  return `${home}/sessions/${sessionId}/settings.json`;
++}

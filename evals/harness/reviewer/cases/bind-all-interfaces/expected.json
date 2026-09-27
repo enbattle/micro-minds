@@ -1,0 +1,11 @@
+{
+  "mustFind": ["HR3-localhost-bind"],
+  "mustNotFind": [
+    "HR8-raw-leak",
+    "HR9-impure-reducer",
+    "CONV-any",
+    "CONV-erasable-syntax",
+    "WIN-path-concat"
+  ],
+  "notes": "listen() binds 0.0.0.0 while the returned URL says 127.0.0.1, which makes the leak easy to miss. The EADDRINUSE handling is correct (PLAN §5.6 step 2)."
+}

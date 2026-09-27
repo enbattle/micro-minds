@@ -1,0 +1,44 @@
+diff --git a/apps/server/src/providers/claude/normalize-tool-failure.ts b/apps/server/src/providers/claude/normalize-tool-failure.ts
+new file mode 100644
+index 0000000..5c6c4e7
+--- /dev/null
++++ b/apps/server/src/providers/claude/normalize-tool-failure.ts
+@@ -0,0 +1,38 @@
++import type { AgentEvent, ToolCategory } from '@micro-minds/shared';
++import { z } from 'zod';
++import { scrubText } from '../../scrub/scrub.ts';
++import { categorizeClaudeTool } from './tool-categories.ts';
++
++const PostToolUseFailure = z.object({
++  hook_event_name: z.literal('PostToolUseFailure'),
++  session_id: z.string(),
++  tool_name: z.string(),
++  tool_use_id: z.string().optional(),
++  error: z.string().optional(),
++});
++
++export type ToolFailureFacts = Pick<AgentEvent, 'kind' | 'tool' | 'text'> & {
++  health: 'notice' | 'warning' | 'error';
++};
++
++/**
++ * Normalizes Claude's PostToolUseFailure hook. Returns undefined for any other payload so the
++ * dispatcher falls through to `kind: 'unknown'`.
++ */
++export function normalizeToolFailure(raw: unknown): ToolFailureFacts | undefined {
++  const parsed = PostToolUseFailure.safeParse(raw);
++  if (!parsed.success) return undefined;
++  const payload = parsed.data;
++  const category: ToolCategory = categorizeClaudeTool(payload.tool_name);
++  return {
++    kind: 'tool.failed',
++    tool: {
++      name: payload.tool_name,
++      category,
++      ...(payload.tool_use_id === undefined ? {} : { useId: payload.tool_use_id }),
++    },
++    text: scrubText(payload.error ?? `${payload.tool_name} failed`),
++    // A failing shell command usually means the build is broken, so show it as red right away.
++    health: category === 'exec' ? 'error' : 'notice',
++  };
++}

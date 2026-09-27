@@ -1,0 +1,88 @@
+diff --git a/packages/shared/src/mood.test.ts b/packages/shared/src/mood.test.ts
+new file mode 100644
+index 0000000..1a58e76
+--- /dev/null
++++ b/packages/shared/src/mood.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from 'vitest';
++import { type Mood, type MoodInput, mood } from './mood.ts';
++import type { Activity } from './types.ts';
++
++describe('mood', () => {
++  it.each<{ name: string; input: MoodInput; expected: Mood }>([
++    { name: 'error outranks working', input: { activity: 'running', health: 'error' }, expected: 'distressed' },
++    { name: 'error outranks waiting', input: { activity: 'waiting_input', health: 'error' }, expected: 'distressed' },
++    { name: 'warning while working', input: { activity: 'thinking', health: 'warning' }, expected: 'worried' },
++    { name: 'one failure, still working', input: { activity: 'reading', health: 'notice' }, expected: 'frustrated' },
++    { name: 'healthy and working', input: { activity: 'writing', health: 'ok' }, expected: 'focused' },
++    { name: 'waiting for permission', input: { activity: 'waiting_permission', health: 'ok' }, expected: 'waiting' },
++    { name: 'waiting for input', input: { activity: 'waiting_input', health: 'notice' }, expected: 'waiting' },
++    { name: 'idle after a turn', input: { activity: 'idle', health: 'ok' }, expected: 'idle' },
++    { name: 'starting', input: { activity: 'starting', health: 'ok' }, expected: 'starting' },
++    { name: 'subagent done', input: { activity: 'done', health: 'ok' }, expected: 'done' },
++    { name: 'session ended', input: { activity: 'offline', health: 'ok' }, expected: 'offline' },
++  ])('$name → $expected', ({ input, expected }) => {
++    expect(mood(input)).toBe(expected);
++  });
++
++  const working: Activity[] = ['thinking', 'reading', 'writing', 'running', 'delegating'];
++
++  it.each(working)('working (%s) is never the idle mood', (activity) => {
++    expect(mood({ activity, health: 'ok' })).not.toBe(mood({ activity: 'idle', health: 'ok' }));
++  });
++});
+diff --git a/packages/shared/src/mood.ts b/packages/shared/src/mood.ts
+new file mode 100644
+index 0000000..bfb4df5
+--- /dev/null
++++ b/packages/shared/src/mood.ts
+@@ -0,0 +1,49 @@
++import type { Activity, AgentState } from './types.ts';
++
++export const MOODS = [
++  'distressed',
++  'worried',
++  'frustrated',
++  'focused',
++  'waiting',
++  'idle',
++  'starting',
++  'done',
++  'offline',
++] as const;
++
++export type Mood = (typeof MOODS)[number];
++
++const WORKING_ACTIVITIES = ['thinking', 'reading', 'writing', 'running', 'delegating'] as const;
++
++type WorkingActivity = (typeof WORKING_ACTIVITIES)[number];
++
++function isWorking(activity: Activity): activity is WorkingActivity {
++  return (WORKING_ACTIVITIES as readonly Activity[]).includes(activity);
++}
++
++export type MoodInput = Pick<AgentState, 'activity' | 'health'>;
++
++/**
++ * Pure mood selector (PLAN §4.4, D22). Rows are checked in table order and the first match
++ * wins, so health outranks activity. Attention is drawn as a separate overlay, not a mood.
++ */
++export function mood(agent: MoodInput): Mood {
++  const { activity, health } = agent;
++  if (health === 'error') return 'distressed';
++  if (health === 'warning') return 'worried';
++  if (isWorking(activity)) return health === 'notice' ? 'frustrated' : 'focused';
++  switch (activity) {
++    case 'waiting_permission':
++    case 'waiting_input':
++      return 'waiting';
++    case 'idle':
++      return 'idle';
++    case 'starting':
++      return 'starting';
++    case 'done':
++      return 'done';
++    case 'offline':
++      return 'offline';
++  }
++}

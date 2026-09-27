@@ -1,0 +1,10 @@
+{
+  "mustFind": ["HR4-hook-token-scope"],
+  "mustNotFind": [
+    "SEC-token-compare",
+    "CONV-unvalidated-boundary",
+    "HR3-localhost-bind",
+    "CONV-any"
+  ],
+  "notes": "The first WS frame accepts any live session hook token as well as the UI token, with a plausible justification in the doc comment (D13 forbids it). Token comparison is constant-time and the frame is zod-parsed, so those rules must not fire."
+}

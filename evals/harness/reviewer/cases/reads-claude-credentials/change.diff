@@ -1,0 +1,31 @@
+diff --git a/apps/server/src/preflight/detect-login.ts b/apps/server/src/preflight/detect-login.ts
+new file mode 100644
+index 0000000..6a8d7d3
+--- /dev/null
++++ b/apps/server/src/preflight/detect-login.ts
+@@ -0,0 +1,25 @@
++import { readFile } from 'node:fs/promises';
++import { homedir } from 'node:os';
++import { join } from 'node:path';
++import { z } from 'zod';
++
++const CredentialsFile = z.object({
++  claudeAiOauth: z.object({ expiresAt: z.number() }).optional(),
++});
++
++export type LoginState = 'logged_in' | 'expired' | 'unknown';
++
++/**
++ * Lets the New Agent dialog warn before starting a Claude session that would open on the
++ * login screen. Only the expiry timestamp is read; the token itself is never used or logged.
++ */
++export async function detectClaudeLogin(now: number): Promise<LoginState> {
++  const file = join(homedir(), '.claude', '.credentials.json');
++  try {
++    const parsed = CredentialsFile.safeParse(JSON.parse(await readFile(file, 'utf8')));
++    if (!parsed.success || parsed.data.claudeAiOauth === undefined) return 'unknown';
++    return parsed.data.claudeAiOauth.expiresAt > now ? 'logged_in' : 'expired';
++  } catch {
++    return 'unknown';
++  }
++}

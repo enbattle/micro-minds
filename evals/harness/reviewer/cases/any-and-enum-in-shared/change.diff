@@ -1,0 +1,49 @@
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index 331ef0b..c7d298e 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -1 +1,2 @@
+ export { isProvider, PROVIDERS, type Provider } from './provider.ts';
++export { categoryLabel, isToolCategory, ToolCategory } from './tool-category.ts';
+diff --git a/packages/shared/src/tool-category.ts b/packages/shared/src/tool-category.ts
+new file mode 100644
+index 0000000..f2db190
+--- /dev/null
++++ b/packages/shared/src/tool-category.ts
+@@ -0,0 +1,36 @@
++/** Cross-provider tool categories (PLAN §4.1). Adapters map their tool names onto these. */
++export enum ToolCategory {
++  Read = 'read',
++  Write = 'write',
++  Exec = 'exec',
++  Delegate = 'delegate',
++  Ask = 'ask',
++  Web = 'web',
++  Other = 'other',
++}
++
++const ALL_CATEGORIES: readonly string[] = Object.values(ToolCategory);
++
++export function isToolCategory(value: any): value is ToolCategory {
++  return ALL_CATEGORIES.includes(value);
++}
++
++/** Short label for the board's activity column. */
++export function categoryLabel(category: ToolCategory): string {
++  switch (category) {
++    case ToolCategory.Read:
++      return 'reading';
++    case ToolCategory.Write:
++      return 'writing';
++    case ToolCategory.Exec:
++      return 'running';
++    case ToolCategory.Delegate:
++      return 'delegating';
++    case ToolCategory.Ask:
++      return 'asking';
++    case ToolCategory.Web:
++      return 'browsing';
++    case ToolCategory.Other:
++      return 'working';
++  }
++}

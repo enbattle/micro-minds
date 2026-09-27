@@ -19,7 +19,8 @@
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit -p . && npm run typecheck --workspaces --if-present",
     "test": "vitest run",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "eval:harness": "node evals/harness/reviewer/run.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
