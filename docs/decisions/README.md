@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
-Short records of the decisions that shape micro-minds. ADRs 0001–0023 correspond one-to-one to
-decisions D1–D23 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
+Short records of the decisions that shape micro-minds. ADRs 0001–0024 correspond one-to-one to
+decisions D1–D24 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 
 | # | Title | Status |
 |---|---|---|
@@ -28,6 +28,7 @@ decisions D1–D23 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 | [0021](0021-graceful-shutdown.md) | Graceful shutdown with a warning | Accepted |
 | [0022](0022-mood-derived-and-pure.md) | Mood is derived and pure | Accepted |
 | [0023](0023-node-native-type-stripping.md) | Node runs TypeScript directly (native type stripping) | Accepted |
+| [0024](0024-harness-guard-exempts-claude-working-files.md) | Dev-harness guard exempts Claude Code working files | Accepted |
 
 ## When to write an ADR
 

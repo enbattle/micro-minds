@@ -56,6 +56,7 @@ Core experience:
 | D21 | **Graceful shutdown with a warning** | Stopping the server with live agents asks for confirmation, then interrupts each CLI, waits a grace period, and kills the process tree. Worktrees are kept and sessions stay resumable. Nothing is deleted automatically. | — |
 | D22 | **Mood is derived and pure** | `mood(agent)` is a pure selector in `packages/shared`, fully tested. The scene only renders it. Working and idle are always visibly different. | Phase 4b |
 | D23 | **Node runs TypeScript directly (native type stripping); only the web app has a build step** | Node 24 strips types natively, so there is no `tsc` emit, `tsx` or build output for server, shared or relay code. This requires `erasableSyntaxOnly` (no enums or namespaces) and `.ts` import extensions. `tsc --noEmit` (TypeScript 7) is used for type checking only. | If a published package ever needs emitted JS |
+| D24 | **The dev-harness guard exempts Claude Code working files under `~/.claude`** | Plan mode, auto-memory and large tool outputs live in `~/.claude/plans/` and `~/.claude/projects/<slug>/{memory,tool-results}/`; blocking them broke those features without protecting any secret. Only literal paths qualify; credentials, settings and transcripts stay blocked. It applies to the dev harness only, never app code. See `docs/dev-harness.md`. | When Claude Code moves these directories |
 
 Each decision gets a short ADR in `docs/decisions/NNNN-title.md`. Record new decisions the same way.
 
