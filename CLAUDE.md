@@ -25,7 +25,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 
 ## Hard rules (security and correctness)
 
-1. **Never read, copy, log or proxy anything under `~/.claude`, `~/.gemini`, `~/.codex`,** or any credential or `.env` file.
+1. **Never read, copy, log or proxy anything under `~/.claude`, `~/.gemini`, `~/.codex`,** or any credential or `.env` file. (The one exception is for the dev harness, not the app: Claude Code's own working files in `~/.claude/plans/` and `~/.claude/projects/*/{memory,tool-results}/`, which `.claude/hooks/guard.ts` allows.)
 2. **Never modify the user's global CLI config.** Inject hooks per session only (PLAN §5.2).
 3. **Bind to `127.0.0.1` only.** The UI token and an Origin/Host check are required on every WS and control request.
 4. **Hook tokens are per session and only valid for `POST /hooks` for that session.** They must never grant WS or control access.

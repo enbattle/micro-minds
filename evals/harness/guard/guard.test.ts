@@ -241,6 +241,58 @@ const CASES: readonly Case[] = [
   ['missing tool_name', LINUX, { tool_input: { command: 'env' } }, 'allow'],
   ['command not string', LINUX, { tool_name: 'Bash', tool_input: { command: 42 } }, 'allow'],
   ['empty file_path', LINUX, file('Read', ''), 'allow'],
+
+  // --- Claude Code working files under ~/.claude are exempt (plans, memory, tool-results) -------
+  ['Read plan', LINUX, file('Read', '/home/alice/.claude/plans/plan-1.md'), 'allow'],
+  ['Write plan (win)', WIN, file('Write', 'C:\\Users\\alice\\.claude\\plans\\p.md'), 'allow'],
+  [
+    'Read memory',
+    MAC,
+    file('Read', '/Users/alice/.claude/projects/-Users-alice-code/memory/MEMORY.md'),
+    'allow',
+  ],
+  [
+    'Write memory (win)',
+    WIN,
+    file('Write', 'C:\\Users\\alice\\.claude\\projects\\C--code\\memory\\fact.md'),
+    'allow',
+  ],
+  [
+    'Read tool-results',
+    LINUX,
+    file('Read', '/home/alice/.claude/projects/slug/tool-results/out-1.txt'),
+    'allow',
+  ],
+  ['bash cat plan via ~', LINUX, bash('cat ~/.claude/plans/p.md'), 'allow'],
+  // Everything else in ~/.claude stays blocked, including near misses and globs.
+  [
+    'credentials still blocked',
+    LINUX,
+    file('Read', '/home/alice/.claude/.credentials.json'),
+    'homeConfig',
+  ],
+  [
+    'settings still blocked',
+    WIN,
+    file('Read', 'C:\\Users\\alice\\.claude\\settings.json'),
+    'homeConfig',
+  ],
+  [
+    'session transcript blocked',
+    LINUX,
+    file('Read', '/home/alice/.claude/projects/slug/abc.jsonl'),
+    'homeConfig',
+  ],
+  ['projects dir itself blocked', LINUX, bash('ls ~/.claude/projects'), 'homeConfig'],
+  ['glob into projects blocked', LINUX, bash('cat ~/.claude/projects/*/memory/x'), 'homeConfig'],
+  ['glob plans blocked', LINUX, bash('cat ~/.claude/pl*/x'), 'homeConfig'],
+  ['.gemini plans not exempt', LINUX, file('Read', '/home/alice/.gemini/plans/p.md'), 'homeConfig'],
+  [
+    '.codex memory not exempt',
+    LINUX,
+    file('Read', '/home/alice/.codex/projects/s/memory/m'),
+    'homeConfig',
+  ],
 ];
 
 describe('guard decide()', () => {

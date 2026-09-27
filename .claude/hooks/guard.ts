@@ -217,7 +217,24 @@ export function classifyPath(absolute: string, ctx: GuardContext): PathClass {
   }
   const next = target[home.length];
   if (next === undefined) return 'home-or-ancestor';
-  return isProtectedDirName(next) ? 'home-config' : 'other';
+  if (!isProtectedDirName(next)) return 'other';
+  return isClaudeWorkingFile(next, target.slice(home.length + 1)) ? 'other' : 'home-config';
+}
+
+/**
+ * Claude Code keeps some of its own working files under ~/.claude and reads them back with the
+ * file tools: plans (plan mode), per-project auto-memory, and large tool outputs. Blocking them
+ * breaks those features without protecting anything secret, so they are exempt (decision made
+ * with the repo owner during Phase 0). Every segment must be literal: a glob could widen the
+ * match to credentials or session transcripts.
+ */
+function isClaudeWorkingFile(configDir: string, rest: readonly string[]): boolean {
+  if (configDir.toLowerCase() !== '.claude' || rest.some(hasGlob)) return false;
+  const [first, slug, area] = rest;
+  if (first === 'plans') return true;
+  return (
+    first === 'projects' && slug !== undefined && (area === 'memory' || area === 'tool-results')
+  );
 }
 
 function checkPath(raw: string, base: string, ctx: GuardContext): Decision {

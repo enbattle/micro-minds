@@ -32,7 +32,12 @@
     "deny": [
       "Read(~/.claude)",
       "Read(~/.claude/**)",
+      "Read(!~/.claude/plans/**)",
+      "Read(!~/.claude/projects/*/memory/**)",
+      "Read(!~/.claude/projects/*/tool-results/**)",
       "Edit(~/.claude/**)",
+      "Edit(!~/.claude/plans/**)",
+      "Edit(!~/.claude/projects/*/memory/**)",
       "Read(~/.gemini)",
       "Read(~/.gemini/**)",
       "Edit(~/.gemini/**)",
