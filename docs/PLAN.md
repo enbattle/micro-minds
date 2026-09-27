@@ -57,6 +57,7 @@ Core experience:
 | D22 | **Mood is derived and pure** | `mood(agent)` is a pure selector in `packages/shared`, fully tested. The scene only renders it. Working and idle are always visibly different. | Phase 4b |
 | D23 | **Node runs TypeScript directly (native type stripping); only the web app has a build step** | Node 24 strips types natively, so there is no `tsc` emit, `tsx` or build output for server, shared or relay code. This requires `erasableSyntaxOnly` (no enums or namespaces) and `.ts` import extensions. `tsc --noEmit` (TypeScript 7) is used for type checking only. | If a published package ever needs emitted JS |
 | D24 | **The dev-harness guard exempts Claude Code working files under `~/.claude`** | Plan mode, auto-memory and large tool outputs live in `~/.claude/plans/` and `~/.claude/projects/<slug>/{memory,tool-results}/`; blocking them broke those features without protecting any secret. Only literal paths qualify; credentials, settings and transcripts stay blocked. It applies to the dev harness only, never app code. See `docs/dev-harness.md`. | When Claude Code moves these directories |
+| D25 | **Usage and cost come from the CLI's own telemetry; capture and basic totals are MVP, the full panel is Phase 6** | Claude Code (and later Gemini/Codex) exports token and cost metrics over OpenTelemetry, which we point at our own localhost endpoint per session. That needs no transcript reading (hard rule 1) and no price table of our own. Cost is shown as **API-equivalent (≈)**, not as the user's bill: subscription plans are limited by usage windows, which these channels don't report. | Phase 1 spike verdict; Phase 6 |
 
 Each decision gets a short ADR in `docs/decisions/NNNN-title.md`. Record new decisions the same way.
 
@@ -136,6 +137,7 @@ export type EventKind =
   | 'attention.idle'         // → ? bubble (waiting for input)
   | 'agent.spawned' | 'agent.finished'   // subagents
   | 'context.compacting'
+  | 'usage.recorded'         // token/cost delta from CLI telemetry (§5.7)
   | 'clock.tick'             // synthetic, server-only (D15)
   | 'unknown';
 
@@ -150,10 +152,22 @@ export interface AgentEvent {
   tool?: { name: string; category: ToolCategory; useId?: string; summary?: string };
   text?: string;           // short, scrubbed, human-readable line for the board
   errorClass?: 'rate_limit' | 'auth' | 'budget' | 'other';  // set by the adapter from payload facts
+  usage?: UsageDelta;      // only on usage.recorded
   raw?: unknown;           // bounded + redacted (D14); stripped from WS frames by default
 }
 
 export type ToolCategory = 'read' | 'write' | 'exec' | 'delegate' | 'ask' | 'web' | 'other';
+
+export interface UsageTotals {
+  inputTokens: number; outputTokens: number;
+  cacheReadTokens: number; cacheWriteTokens: number;
+  costUsd: number;         // API-equivalent, as reported by the CLI; never computed by us
+}
+
+export interface UsageDelta extends UsageTotals {
+  model: string;           // the model id reported by the CLI
+  source: 'otel' | 'statusline';
+}
 ```
 
 Rules:
@@ -161,6 +175,7 @@ Rules:
 - **Adapters set facts (`kind`, `tool.category`, `errorClass`). They never set severity or health.** Severity and health are *derived state*: they depend on history (for example "3 failures in 5 minutes"), so they're computed in the reducer using `severity.ts` rules.
 - **Tool categories are the cross-provider contract.** Each adapter maps its own tool names (`Read`, `read_file`, `shell`…) to a `ToolCategory`. The reducer and UI only ever see categories. That keeps adding a provider cheap (D10).
 - **Unknown payloads become `kind: 'unknown'` with `raw` kept.** Never throw.
+- **Usage events are deltas.** The ingest layer converts cumulative counters to deltas before they become events, so the reducer only ever adds. Cost is always the CLI's number, never derived from a price table.
 
 ### 4.2 Derived state (pure reducer)
 
@@ -182,6 +197,7 @@ export interface AgentState {
   currentTool?: { name: string; category: ToolCategory; summary?: string };
   failureTimes: number[];            // for the rolling window
   children: string[];
+  usage?: { total: UsageTotals; byModel: Record<string, UsageTotals> };  // root agent = whole session; subagents only if attributable (§5.7)
 }
 
 export function reduce(state: WorldState, e: AgentEvent, cfg: Thresholds): WorldState; // PURE
@@ -206,6 +222,7 @@ The server holds the authoritative state. Clients receive a snapshot, then live 
 | `agent.finished` | child → `done` | The UI removes the child after about 3 s. That's a UI timer, not reducer state. |
 | `session.ended` | `offline` | |
 | `clock.tick` | — | Recomputes staleness and failure-window decay. |
+| `usage.recorded` | — (no change) | Adds the delta to the agent's `usage` totals. Never affects activity, health or mood. |
 
 ### 4.4 Mood (pure selector, D22)
 
@@ -313,6 +330,26 @@ Session record (SQLite): `status: 'running' | 'ended' | 'interrupted'`, `endReas
 
 **Dev-mode note:** `npm run dev` restarts the server whenever server code changes, which ends running sessions. Resume makes this survivable. A separate PTY-owning process that lets agents outlive the server is a post-MVP option (see D20).
 
+### 5.7 Usage and cost telemetry (D25)
+
+**Channels, in order of preference** (both **to verify in Phase 1**):
+
+1. **OpenTelemetry export.** Set per session in the PTY env: `CLAUDE_CODE_ENABLE_TELEMETRY=1`, the OTLP metrics (and, if needed, logs) exporter, protocol `http/json` (no protobuf dependency), endpoint `http://127.0.0.1:<port>/otel`, and the session's hook token in `OTEL_EXPORTER_OTLP_HEADERS`. Explicitly keep prompt and tool-detail logging off. Expected data: token counts by type and cost, per model. Gemini CLI and Codex also export OpenTelemetry, so Phase 5 reuses this path.
+2. **Status-line payload** (fallback). Claude Code passes the status-line command JSON that includes total cost. The downside: injecting our status line replaces the user's own in micro-minds sessions.
+
+Pick **one channel per session** so usage is never counted twice. Record the verdict in `docs/protocols/claude.md` and an ADR.
+
+**Ingest:** `POST /otel/v1/metrics` (and `/v1/logs` only if the spike shows it's needed). It uses the same protections as `/hooks`: per-session hook token (D13), body-size limit, zod parsing of only the fields we use, and unknown metrics ignored. The server converts cumulative counters to deltas (it keeps the last value per series, which is ingest state, not reducer state) and emits `usage.recorded` events.
+
+**Attribution:** per session and per model always. Per subagent only if the telemetry carries an agent identifier; the spike tells us.
+
+**Presentation rules:**
+
+- Cost is always labelled API-equivalent (`≈ $4.20`), with a tooltip explaining that subscription plans aren't billed per token.
+- Usage limits aren't observable here. Hitting one still surfaces as `errorClass: 'rate_limit' | 'budget'` → red (§6).
+- Usage capture can be switched off in config. When it's off, the board shows no usage rather than zeros.
+- **Side effect to disclose:** sessions started by micro-minds export telemetry to micro-minds, so a personal OpenTelemetry collector the user has configured won't receive data from those sessions.
+
 ---
 
 ## 6. Severity, health and attention (`packages/shared/src/severity.ts`)
@@ -379,12 +416,17 @@ Attention is a separate channel from health. Health goes back to `ok` after 5 mi
 { t: 'pty.data', sessionId, data: string }      // batched ~16 ms
 { t: 'pty.exit', sessionId, code: number }
 { t: 'pty.snapshot', sessionId, data: string }  // serialized headless xterm, on (re)connect
+{ t: 'usage.summary', today: UsageTotals }      // server-computed from the event store (local day); on connect and after each usage event
 { t: 'error', code: string, message: string }
 
 // client → server
 { t: 'auth', token }
 { t: 'session.create', provider, repoPath, name?, initialPrompt? }
+{ t: 'session.stop', sessionId }                // graceful (§5.5)
 { t: 'session.kill', sessionId }
+{ t: 'session.resume', sessionId }
+{ t: 'worktree.remove', sessionId, confirm: true }
+{ t: 'app.quit', confirm: true }
 { t: 'pty.input', sessionId, data: string }
 { t: 'pty.resize', sessionId, cols, rows }
 ```
@@ -396,11 +438,11 @@ Every inbound frame is validated with zod (discriminated union on `t`). Oversize
 ## 9. Security and privacy (non-negotiable)
 
 1. **Bind to `127.0.0.1` only.** Refuse to start otherwise.
-2. **Two token classes (D13).** A **UI token**, random per server start and embedded in the served page, is required for the WS and for control HTTP. A **hook token**, random per session, is injected into that session's env and only accepted on `POST /hooks` for that `sessionId`. Compare tokens in constant time.
+2. **Two token classes (D13).** A **UI token**, random per server start and embedded in the served page, is required for the WS and for control HTTP. A **hook token**, random per session, is injected into that session's env and only accepted on that session's ingest endpoints (`POST /hooks`, `POST /otel/*`). Compare tokens in constant time.
 3. **Check the `Origin` and `Host` headers** on WS and HTTP, to block DNS rebinding and cross-site WS.
 4. **No credential access (D4).** Enforced in code *and* in the dev harness (§11.1).
 5. **Redaction.** `tool.summary`, `text` and the stored `raw` all go through the scrubber (API-key patterns, bearer tokens, `KEY=value` lines from env-like content, high-entropy strings). `raw` is size-capped (D14).
-6. **Hook ingest hardening.** Body-size limit, zod validation, per-session rate limit. Unknown sessions get 404 with no details.
+6. **Ingest hardening** (`/hooks` and `/otel/*`). Body-size limit, zod validation, per-session rate limit. Unknown sessions get 404 with no details. Telemetry never includes prompt text or tool details: those exporter options stay off.
 7. **Data location.** `~/.micro-minds/` (DB, worktrees, per-session settings). The README documents how to wipe it.
 8. **No telemetry.** The app makes no network calls of its own.
 9. **README disclaimer.** Users run the tool with their own accounts and are responsible for their providers' terms.
@@ -425,7 +467,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [x] 0.8 `.claude/skills/`: `phase-status`, `new-adapter` (the adapter checklist) and `record-fixture` (the scrub-and-commit workflow).
 - [x] 0.9 Harness evals (§11.1): `evals/harness/` with planted-violation diffs and a runner script.
 - [ ] 0.10 GitHub Actions: `npm run check` on ubuntu, macos and windows.
-- [x] 0.11 ADRs 0001–0023 from §2.
+- [x] 0.11 ADRs 0001–0025 from §2 (0024–0025 were added after Phase 0 began).
 
 **Done when:** `npm run check` passes locally (Windows) and in CI on all 3 operating systems; Claude Code runs `npm run check` with no prompts; a blocked command is shown to be blocked by both the deny rule and the guard hook; `npm run eval:harness` runs.
 
@@ -440,8 +482,9 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [ ] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
 - [ ] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
 - [ ] 1.7 Scrub the fixtures (paths, usernames, secrets) using the `record-fixture` skill.
+- [ ] 1.8 Usage telemetry spike (§5.7): enable OpenTelemetry export to a local capture endpoint and record the metric payloads (and the status-line JSON) for scenarios (a), (b) and (f). Confirm the metric names, units, cumulative vs delta, model and session attributes, whether subagents are distinguishable, and whether the user's own settings can override the env. Choose the channel and write an ADR.
 
-**Done when:** `docs/protocols/claude.md` is complete; there are at least 8 scrubbed fixture files; every Claude "verify" in §5 is closed or turned into an ADR.
+**Done when:** `docs/protocols/claude.md` is complete; there are at least 8 scrubbed fixture files; every Claude "verify" in §5 is closed or turned into an ADR; there's a usage-channel verdict with recorded telemetry fixtures.
 
 ### Phase 2: Server core
 
@@ -460,6 +503,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [ ] 2.11 App lifecycle (§5.6): single-instance lock, crash recovery and orphan detection, graceful shutdown with a hard deadline, sleep/wake gap handling. Integration-test each path with the fake provider.
 - [ ] 2.12 Resume (D20): capture `resumeId` from the adapter, relaunch into the same worktree and `sessionId`, and handle the edge cases (worktree gone, no id captured). The fake provider supports a `--resume` flag so this is tested in CI.
 - [ ] 2.13 `mood()` selector (§4.4), tests first, including "working vs idle is always distinct".
+- [ ] 2.14 Usage capture (§5.7): the `/otel` ingest route with the hook-token scope, cumulative→delta conversion, `usage.recorded` events, reducer totals per session and model, the `usage.summary` frame, and a config switch. Tests first, replaying the telemetry fixtures from 1.8. The fake provider emits usage too.
 
 **Done when:** a scripted test creates a session in a temporary repo using the fake provider and observes `session.started → prompt.submitted → tool.* → turn.finished` on the WS (in CI, and manually with real Claude); every fixture has a replay snapshot test; the conformance suite is green.
 
@@ -475,7 +519,8 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [ ] 3.6 New Agent dialog with preflight results and recent repos.
 - [ ] 3.7 Keyboard shortcuts; optional notification and chime when the tab is hidden.
 - [ ] 3.8 Session controls: Stop, Kill, Resume, Remove worktree (confirmed, with dirty/unpushed warnings), Quit app (confirmed when agents are running), "Server restarted — reload" banner, orphan-kill prompt.
-- [ ] 3.9 Playwright smoke test with the fake provider, including stop → resume.
+- [ ] 3.9 Playwright smoke test with the fake provider, including stop → resume and usage totals updating.
+- [ ] 3.10 Usage display: tokens and `≈ $` cost on each board row (hover shows the breakdown by type and model), a header showing today's total across all agents, and the API-equivalent tooltip. Nothing shown when capture is off.
 
 **Done when:** you can run 3 Claude agents at once in separate worktrees; every agent's state is on the board; a permission prompt reaches the inbox in under 1 s and one click gets you to it.
 
@@ -497,7 +542,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 |---|---|---|
 | 4b Art pass | Art direction, CC0 assets (`ASSETS.md`), rigged character with animations, customization, lighting | Medium–High (art-bound, not code-bound) |
 | 5 Multi-provider | Install Gemini and Codex; a protocol spike per provider (same as Phase 1); adapters passing conformance; terminal-only verdict where hooks fall short | Medium per provider (the adapter work is small; the spike is the risk) |
-| 6 Depth | Usage/limits panel; session history + replay; resume; opt-in blocking permission hook (own ADR, breaks D9); worktree diff/commit/PR | High overall; do the items independently |
+| 6 Depth | Full usage panel (history per day, model and repo, charts, optional soft budgets that turn the board amber, usage-limit warnings); session history + replay; resume polish beyond D20; opt-in blocking permission hook (own ADR, breaks D9); worktree diff/commit/PR | High overall; do the items independently |
 | 7 Structured chat mode | Agent SDK / stream-json, Gemini ACP, Codex app-server; chat UI. **Re-check provider terms first.** | High |
 | 8 Packaging | Electron shell, tray, native notifications | Medium |
 | 9 Orchestration | Cross-provider handoff via an MCP tool exposed by micro-minds (the "town of minds" vision) | High, experimental |
@@ -538,6 +583,7 @@ The harness is code, so it gets tested too.
 | 3D scope creep delays usefulness | High | Board first (D8), placeholders (D7) |
 | Alert fatigue | Medium | §6 rules, one `Thresholds` config, a review after a week of use |
 | Parallel agents exhaust plan limits | High | `errorClass` surfaces as red with a clear message |
+| Users read ≈cost as their bill, or telemetry formats drift | Medium | "API-equivalent" labelling (§5.7), cost taken from the CLI, telemetry fixtures, unknown metrics ignored |
 
 ---
 
@@ -576,3 +622,4 @@ The harness is code, so it gets tested too.
 - The app watches native Claude orchestration; routing by the app stays in Phase 6/9 (D19).
 - Lightweight resume in the MVP (D20), graceful shutdown (D21), app lifecycle and edge cases (§5.6).
 - Mood model with distinct working and idle states (§4.4, D22).
+- Usage and cost monitoring (D25, §5.7): OpenTelemetry capture and basic totals in the MVP (tasks 1.8, 2.14, 3.10), the full panel in Phase 6. Also added the missing session-control frames to §8.

@@ -29,7 +29,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 1. **Never read, copy, log or proxy anything under `~/.claude`, `~/.gemini`, `~/.codex`,** or any credential or `.env` file. The dev harness exempts only Claude Code's own plans, memory and tool-results (ADR 0024, `docs/dev-harness.md`); app code gets no exemption.
 2. **Never modify the user's global CLI config.** Inject hooks per session only (PLAN §5.2).
 3. **Bind to `127.0.0.1` only.** The UI token and an Origin/Host check are required on every WS and control request.
-4. **Hook tokens are per session and only valid for `POST /hooks` for that session.** They must never grant WS or control access.
+4. **Hook tokens are per session and only valid on that session's ingest endpoints (`POST /hooks`, `POST /otel/*`).** They must never grant WS or control access.
 5. **Hooks fail open.** The relay always exits 0, prints nothing to stdout, and times out fast.
 6. **Adapters set facts only** (`kind`, `tool.category`, `errorClass`). Health and severity are derived in `packages/shared` only.
 7. **Unknown provider events become `kind: 'unknown'`.** Never throw on them.
@@ -56,4 +56,5 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - Read `process.env` only in config modules (`apps/server/src/config/`), where it's parsed with zod. Biome enforces this.
 - Each workspace declares every package it imports, dev tools included (Biome `noUndeclaredDependencies`).
 - IDs: ULID. Timestamps: ms epoch, stamped by the server.
+- Usage and cost come only from the CLI's telemetry (PLAN §5.7). Never compute cost from a price table, never read transcripts for it, and always label cost as API-equivalent (`≈ $`) in the UI.
 - UI state flows one way: WS → store → shared `reduce()` → components. Scene components read `AgentState` only and hold no business logic.
