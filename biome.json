@@ -65,7 +65,8 @@
         "apps/server/src/config/**",
         "scripts/**",
         "evals/**",
-        ".claude/hooks/**"
+        ".claude/hooks/**",
+        "spikes/**"
       ],
       "linter": {
         "rules": {
@@ -76,7 +77,7 @@
       }
     },
     {
-      "includes": ["scripts/**", "evals/**", ".claude/hooks/**"],
+      "includes": ["scripts/**", "evals/**", ".claude/hooks/**", "spikes/**"],
       "linter": {
         "rules": {
           "suspicious": {
