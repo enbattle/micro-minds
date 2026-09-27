@@ -418,8 +418,8 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [x] 0.2 Root scripts: `dev`, `build`, `test`, `lint`, `format`, `typecheck`, `check` (= lint + typecheck + test), `eval:harness` (`e2e` is added with Playwright in task 3.9).
 - [x] 0.3 **node-pty smoke test on Windows**: install it and spawn `cmd.exe`/`pwsh` through ConPTY. Record in an ADR whether prebuilt binaries worked or VS Build Tools were needed.
 - [x] 0.4 Root `CLAUDE.md` plus a short `CLAUDE.md` in each package (its purity and I/O rules, and its test command).
-- [ ] 0.5 `.claude/settings.json`: allow `npm run *`, `npm test *`, `npx biome *` and read-only git commands; deny `.env*` reads, provider config dirs, `git push`, `rm -rf`; a `PostToolUse` Biome-format hook on Edit/Write.
-- [ ] 0.6 `.claude/hooks/guard.ts` (a cross-platform Node script, run with native type stripping): a `PreToolUse` guard that blocks Bash/PowerShell/Read commands touching `~/.claude`, `~/.gemini`, `~/.codex` or `.env*`. It's defense in depth, because deny rules alone don't catch `cat ~/.claude/...`.
+- [x] 0.5 `.claude/settings.json`: allow `npm run *`, `npm test *`, `npx biome *` and read-only git commands; deny `.env*` reads, provider config dirs, `git push`, `rm -rf`; a `PostToolUse` Biome-format hook on Edit/Write.
+- [x] 0.6 `.claude/hooks/guard.ts` (a cross-platform Node script, run with native type stripping): a `PreToolUse` guard that blocks Bash/PowerShell/Read commands touching `~/.claude`, `~/.gemini`, `~/.codex` or `.env*`. It's defense in depth, because deny rules alone don't catch `cat ~/.claude/...`.
 - [ ] 0.7 `.claude/agents/`: `reviewer` (read-only; checks the diff against CLAUDE.md and §9) and `test-writer` (fixture-driven tests).
 - [ ] 0.8 `.claude/skills/`: `phase-status`, `new-adapter` (the adapter checklist) and `record-fixture` (the scrub-and-commit workflow).
 - [ ] 0.9 Harness evals (§11.1): `evals/harness/` with planted-violation diffs and a runner script.
