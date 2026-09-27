@@ -75,9 +75,14 @@ export function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
-/** The first unticked task in document order, or null when every task is ticked. */
+/**
+ * The first unticked task of the current phase, in document order, or null when every task is
+ * ticked. Taking it from the current phase keeps the phase line and the next task consistent even
+ * if PLAN.md ever lists phases out of order.
+ */
 export function nextTask(tasks: ReadonlyMap<string, boolean>): string | null {
-  for (const [id, done] of tasks) if (!done) return id;
+  const phase = currentPhase(tasks);
+  for (const [id, done] of tasks) if (!done && phaseOf(id) === phase) return id;
   return null;
 }
 

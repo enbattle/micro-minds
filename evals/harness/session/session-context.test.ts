@@ -102,12 +102,13 @@ describe('phase helpers', () => {
       '4a',
     ],
     [
+      // Next task always comes from the current phase, so the two lines never disagree.
       'earliest phase wins even when listed later',
       [
         ['4a.1', false],
         ['3.1', false],
       ],
-      '4a.1',
+      '3.1',
       '3',
     ],
     [
@@ -116,7 +117,7 @@ describe('phase helpers', () => {
         ['4a.1', false],
         ['4.1', false],
       ],
-      '4a.1',
+      '4.1',
       '4',
     ],
   ] as const)('%s', (_, entries, next, phase) => {
