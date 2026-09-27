@@ -33,7 +33,11 @@ Each case in `reviewer/cases/<case>/` has:
 - **Clean-case false positive**: any `blocker` or `major` finding on a clean case. `minor` findings are allowed.
 - **Error**: the CLI failed, timed out, hit the turn or budget cap, or the final ```json block didn't parse. Its planted rules count as missed.
 
-The run **fails** (exit 1) if recall is below `RECALL_THRESHOLD` (0.8, in `reviewer/score.ts`), or if there is any clean-case false positive, mustNotFind hit or errored case. Verdict mismatches and rule IDs outside the catalog are reported but don't fail the run.
+A **trial passes** only if it has no error, no missed planted rule, no mustNotFind hit and no clean-case blocker/major finding. With `--trials N`, a **case passes** when at least `requiredPasses(N) = ceil(2N/3)` of its trials pass: 1 of 1, 2 of 2, 2 of 3, 3 of 4, and so on (`reviewer/trials.ts`).
+
+The run **fails** (exit 1) if any case misses its required pass count, if recall over all trials is below `RECALL_THRESHOLD` (0.8, in `reviewer/score.ts`), or if any trial errored. At `--trials 1` this means every case must pass, so a single miss fails the run. Use `--trials 3` to tell a real regression from run-to-run variation. Cases that passed some but not all trials are listed as **flaky** under the table. Verdict mismatches and rule IDs outside the catalog are reported but don't fail the run.
+
+The header and the results JSON record the exact Claude Code version (`claude --version`) and the model IDs used (from `modelUsage` in the CLI's JSON output). At the end the runner prints a ready-to-paste row for the baseline history table.
 
 ### Running
 

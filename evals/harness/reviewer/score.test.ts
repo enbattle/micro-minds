@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type CaseScore,
+  casePassed,
   checkUnifiedDiff,
   type Expected,
   extractFinalJsonBlock,
@@ -162,6 +163,7 @@ describe('parseClaudeJson', () => {
         subtype: 'success',
         costUsd: 0.1234,
         numTurns: 3,
+        models: [],
       },
     });
   });
@@ -316,6 +318,56 @@ describe('scoreCase', () => {
       error: 'timed out',
       missed: ['HR3-localhost-bind'],
     });
+  });
+});
+
+describe('parseClaudeJson models', () => {
+  it('reads model ids from modelUsage', () => {
+    const stdout = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      result: 'r',
+      modelUsage: { 'claude-opus-5-5': { costUSD: 0.2 } },
+    });
+    const result = parseClaudeJson(stdout);
+    expect(result.ok && result.value.models).toEqual(['claude-opus-5-5']);
+  });
+});
+
+describe('casePassed', () => {
+  it.each([
+    {
+      name: 'all found',
+      score: scoreCase('a', expected(['CONV-any']), review([finding('CONV-any')]), CATALOG),
+      passed: true,
+    },
+    {
+      name: 'a miss',
+      score: scoreCase('a', expected(['CONV-any']), review([]), CATALOG),
+      passed: false,
+    },
+    {
+      name: 'a forbidden hit',
+      score: scoreCase(
+        'a',
+        expected(['CONV-any'], ['HR8-raw-leak']),
+        review([finding('CONV-any'), finding('HR8-raw-leak', 'minor')]),
+        CATALOG,
+      ),
+      passed: false,
+    },
+    {
+      name: 'a clean-case false positive',
+      score: scoreCase('c', expected([]), review([finding('GEN-correctness', 'major')]), CATALOG),
+      passed: false,
+    },
+    {
+      name: 'an error on a clean case',
+      score: scoreErroredCase('c', expected([]), 'boom'),
+      passed: false,
+    },
+  ])('$name -> $passed', ({ score, passed }) => {
+    expect(casePassed(score)).toBe(passed);
   });
 });
 

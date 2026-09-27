@@ -1,6 +1,8 @@
 // Pure parsing and scoring for the reviewer evals (PLAN §11.1). No I/O here, so every
 // function is unit-tested in score.test.ts; run.ts does the process and file work.
 
+import { extractModels } from './versions.ts';
+
 export const SEVERITIES = ['blocker', 'major', 'minor'] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
@@ -35,6 +37,8 @@ export interface ClaudeResult {
   subtype: string;
   costUsd: number | null;
   numTurns: number | null;
+  /** Model ids from `modelUsage` (see versions.ts); empty when the result doesn't say. */
+  models: string[];
 }
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -179,6 +183,7 @@ export function parseClaudeJson(stdout: string): Parsed<ClaudeResult> {
       subtype,
       costUsd: typeof data.total_cost_usd === 'number' ? data.total_cost_usd : null,
       numTurns: typeof data.num_turns === 'number' ? data.num_turns : null,
+      models: extractModels(data),
     },
   };
 }
@@ -305,13 +310,19 @@ export function formatRatio(value: number): string {
   return `${(value * 100).toFixed(0)}%`;
 }
 
-function caseResult(score: CaseScore): string {
-  if (score.status === 'error') return 'ERROR';
-  const ok =
+/** One run of a case passes when it scored, found every planted rule and reported nothing it mustn't. */
+export function casePassed(score: CaseScore): boolean {
+  return (
+    score.status === 'scored' &&
     score.missed.length === 0 &&
     score.forbiddenHits.length === 0 &&
-    score.falsePositives.length === 0;
-  return ok ? 'PASS' : 'FAIL';
+    score.falsePositives.length === 0
+  );
+}
+
+function caseResult(score: CaseScore): string {
+  if (score.status === 'error') return 'ERROR';
+  return casePassed(score) ? 'PASS' : 'FAIL';
 }
 
 /** Plain-text table for the terminal, one row per case plus a totals line. */
