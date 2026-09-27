@@ -91,7 +91,7 @@ three roles are kept apart, each in a fresh context that never sees another's re
 - **Which tasks get locked tests** (the one definition; the skills and agents point here). A task
   needs the test writer and a lock commit when its change touches **code** (TypeScript or
   JavaScript under `packages/`, `apps/`, `scripts/`, `.claude/hooks/` or `evals/`, test files
-  aside) or adds or changes **tests** (`*.test.ts`, `*.test.tsx`, `e2e/`). Everything else is
+  aside) or adds or changes **tests** (`*.test.ts`, `*.test.tsx`, `*.test-helpers.ts`, `e2e/`). Everything else is
   **data or docs** and needs no lock: `*.md`, `spikes/`, reviewer eval-case data, fixtures, and
   config (`package.json` and the lockfile, `biome.json`, `tsconfig*`, `vitest.config.*`,
   `.github/`, `.claude/settings.json`). Every test in any task comes from the test writer.
@@ -99,14 +99,17 @@ three roles are kept apart, each in a fresh context that never sees another's re
   commit before the test writer runs (`chore(<scope>): test infrastructure for <id>`): a test
   dependency the task names (fast-check for 2.1, Playwright for 3.9, axe-core for 3.11), the
   fixtures a task delivers (1.7, 1.8) that its replay tests read, or a behavior-free seam (a type
-  or interface) the test writer asked for. The lock commit's body names it, and the reviewer
-  checks it holds no behavior. If the test writer reports a missing seam, add it this way and run
+  or interface) the test writer asked for. It carries a `Test-infra: <id>` trailer, which puts it in
+  the reviewer's diff; the lock commit's body names it, and the reviewer checks it holds no behavior. If the test writer reports a missing seam, add it this way and run
   a fresh test writer once more.
 - **Locked tests.** The test writer's files are committed alone with a `Test-lock: <id>` trailer.
   `scripts/tests-locked.ts` then fails on any test path modified, deleted or added afterwards
   (committed, staged, unstaged or untracked; new snapshot files excepted). A disputed test gets one
-  revision by a fresh test writer (`Revision-reason:` trailer); the script refuses a third lock
-  commit, so a second dispute goes to you. A lock is checked while its task is open: the next
+  revision by a fresh test writer (`Revision-reason:` trailer), only while the task is open and
+  only from a clean lock. The script refuses a third lock commit, a revision after another task's
+  lock, and any test change between the original lock and the revision, so a revision can't carry
+  an implementer's edit along. A second dispute goes to you. Test helpers are named
+  `*.test-helpers.ts` so the lock covers them. A lock is checked while its task is open: the next
   task's lock commit may change the same tests again.
 - **Adversarial review.** The reviewer's mandate is the strongest case against the change. It
   re-runs `npm run check` and the test lock, matches each clause to a test, builds failure cases and

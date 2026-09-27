@@ -16,7 +16,7 @@ Arguments: `$ARGUMENTS`. `--run-evals` means the user agrees to spend tokens on 
 **Two branch modes** (ADR 0027):
 
 - **Task branch** (`<type>/<id>-<slug>`): one task, one pull request. `BASE` means `--merge-base origin/main`.
-- **Phase branch** (`phase/<n>-<slug>`, run by `/run-phase`): one pull request for the phase. Earlier tasks are already committed and reviewed, so this task's change is its lock commit(s) plus what's staged: `BASE` means `<L>^`, the parent of the task's first `Test-lock: <id>` commit (`git log --format=%H --grep="^Test-lock: <id>$" origin/main..HEAD`, the last line). A task with no lock commit (docs only) uses `HEAD`.
+- **Phase branch** (`phase/<n>-<slug>`, run by `/run-phase`): one pull request for the phase. Earlier tasks are already committed and reviewed, so this task's change is its test-infrastructure commit (if any), its lock commit(s) and what's staged: `BASE` means the parent of the task's **first** commit carrying a `Test-infra: <id>` or `Test-lock: <id>` trailer (`git log --format=%H -E --grep="^Test-(infra|lock): <id>$" origin/main..HEAD`, the last line, then `^`). The reviewer must see the infrastructure commit to check it holds no implementation. A task with neither (docs only) uses `HEAD`.
 
 **Code tasks** (ADR 0028): a task whose change touches code or tests, as defined in `docs/dev-harness.md` ("Which tasks get locked tests"), must already have its `Test-lock: <id>` commit from `/start-task` step 6. Data and docs (fixtures, config, `*.md`, `spikes/`, eval-case data) need none. A code task ends as: an optional test-infrastructure commit, the lock commit (plus at most one revision), then the implementation commit this skill makes.
 
@@ -63,7 +63,7 @@ If the file list touches `apps/`, `packages/`, `.claude/hooks/` or `evals/`, run
 
 You implemented this change, so you don't review it, and you don't brief the reviewer: it gets artifacts only.
 
-1. **Snapshot the repository** for step 4.4: `git rev-parse HEAD`, `git status --porcelain -uall`, and `git diff --cached | git hash-object --stdin`. Keep the three outputs.
+1. **Snapshot the repository** for step 4.4: `git rev-parse HEAD`, `git status --porcelain -uall`, `git diff --cached | git hash-object --stdin`, `git for-each-ref | git hash-object --stdin` (branches and tags) and `git config --local --list | git hash-object --stdin`. Keep the five outputs.
 2. **Invoke the `reviewer` subagent** (never a fork) with exactly this prompt and nothing else. No summary of the change, no claim that checks pass, no rationale:
 
    ```
