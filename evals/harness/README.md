@@ -78,3 +78,11 @@ Also re-run after a Claude Code upgrade or a model change. Results vary from run
 3. Write `expected.json`. `mustFind` lists every planted rule ID. `mustNotFind` lists nearby rules the code deliberately satisfies (for example `SEC-token-compare` when the code does use `timingSafeEqual`). `notes` explains both.
 4. If a new rule ID is needed, add it to a catalog table in `.claude/agents/reviewer.md` first.
 5. Run `npm run eval:harness -- --dry-run` and `npx vitest run --project harness`, then run the new case for real: `npm run eval:harness -- <kebab-name>`.
+
+## Baseline history
+
+Record each full run that follows a change to `CLAUDE.md`, `.claude/agents/` or PLAN §9, so regressions are visible.
+
+| Date | Reviewer model | Recall | Clean-case false positives | Forbidden hits | Cost | Notes |
+|---|---|---|---|---|---|---|
+| 2026-09-27 | default (inherit) | 12/12 (100%) | 0 | 1 → 0 | ≈ $0.94 + $0.10 | The first run flagged `TEST-missing` (minor) on `clean-hook-ingest`. The reviewer was right: the case's tests never exercised the 429 rate-limit path. Fixed the case by adding a per-session rate-limit test; the re-run passed. |
