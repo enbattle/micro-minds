@@ -466,7 +466,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [x] 0.7 `.claude/agents/`: `reviewer` (read-only; checks the diff against CLAUDE.md and §9) and `test-writer` (fixture-driven tests).
 - [x] 0.8 `.claude/skills/`: `phase-status`, `new-adapter` (the adapter checklist) and `record-fixture` (the scrub-and-commit workflow).
 - [x] 0.9 Harness evals (§11.1): `evals/harness/` with planted-violation diffs and a runner script.
-- [ ] 0.10 GitHub Actions: `npm run check` on ubuntu, macos and windows.
+- [x] 0.10 GitHub Actions: `npm run check` on ubuntu, macos and windows.
 - [x] 0.11 ADRs 0001–0025 from §2 (0024–0025 were added after Phase 0 began).
 
 **Done when:** `npm run check` passes locally (Windows) and in CI on all 3 operating systems; Claude Code runs `npm run check` with no prompts; a blocked command is shown to be blocked by both the deny rule and the guard hook; `npm run eval:harness` runs.
