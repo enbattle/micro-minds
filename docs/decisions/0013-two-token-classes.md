@@ -1,6 +1,6 @@
 # 0013. Two token classes: UI token vs per-session hook token
 
-- Status: Accepted
+- Status: Accepted. The UI-token delivery part is superseded by [0026](0026-ui-session-bootstrap.md); the hook-token part stands.
 - Date: 2026-09-26
 - Plan: D13 (PLAN §2)
 

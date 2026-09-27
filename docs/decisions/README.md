@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
-Short records of the decisions that shape micro-minds. ADRs 0001–0025 correspond one-to-one to
-decisions D1–D25 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
+Short records of the decisions that shape micro-minds. ADRs 0001–0026 correspond one-to-one to
+decisions D1–D26 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 
 | # | Title | Status |
 |---|---|---|
@@ -17,7 +17,7 @@ decisions D1–D25 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 | [0010](0010-claude-first-multi-provider-by-design.md) | Claude-first MVP, multi-provider by design | Accepted |
 | [0011](0011-windows-first-class.md) | Windows is first-class from Phase 0 | Accepted |
 | [0012](0012-worktrees-under-micro-minds-home.md) | Worktrees live under `~/.micro-minds/worktrees/<repo-slug>/<sessionId>` | Accepted |
-| [0013](0013-two-token-classes.md) | Two token classes: UI token vs per-session hook token | Accepted |
+| [0013](0013-two-token-classes.md) | Two token classes: UI token vs per-session hook token | Accepted (UI delivery superseded by 0026) |
 | [0014](0014-bounded-redacted-raw.md) | `raw` payloads are bounded and redacted | Accepted |
 | [0015](0015-time-enters-reducer-as-events.md) | Time enters the reducer only as events | Accepted |
 | [0016](0016-headless-xterm-scrollback.md) | Terminal scrollback is kept by a headless xterm on the server | Accepted |
@@ -30,6 +30,7 @@ decisions D1–D25 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 | [0023](0023-node-native-type-stripping.md) | Node runs TypeScript directly (native type stripping) | Accepted |
 | [0024](0024-harness-guard-exempts-claude-working-files.md) | Dev-harness guard exempts Claude Code working files | Accepted |
 | [0025](0025-usage-cost-from-cli-telemetry.md) | Usage and cost come from the CLI's own telemetry | Accepted |
+| [0026](0026-ui-session-bootstrap.md) | UI sessions start from a one-time code and live in an HttpOnly cookie | Accepted |
 
 ## When to write an ADR
 

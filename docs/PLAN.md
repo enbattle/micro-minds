@@ -58,6 +58,7 @@ Core experience:
 | D23 | **Node runs TypeScript directly (native type stripping); only the web app has a build step** | Node 24 strips types natively, so there is no `tsc` emit, `tsx` or build output for server, shared or relay code. This requires `erasableSyntaxOnly` (no enums or namespaces) and `.ts` import extensions. `tsc --noEmit` (TypeScript 7) is used for type checking only. | If a published package ever needs emitted JS |
 | D24 | **The dev-harness guard exempts Claude Code working files under `~/.claude`** | Plan mode, auto-memory and large tool outputs live in `~/.claude/plans/` and `~/.claude/projects/<slug>/{memory,tool-results}/`; blocking them broke those features without protecting any secret. Only literal paths qualify; credentials, settings and transcripts stay blocked. It applies to the dev harness only, never app code. See `docs/dev-harness.md`. | When Claude Code moves these directories |
 | D25 | **Usage and cost come from the CLI's own telemetry; capture and basic totals are MVP, the full panel is Phase 6** | Claude Code (and later Gemini/Codex) exports token and cost metrics over OpenTelemetry, which we point at our own localhost endpoint per session. That needs no transcript reading (hard rule 1) and no price table of our own. Cost is shown as **API-equivalent (≈)**, not as the user's bill: subscription plans are limited by usage windows, which these channels don't report. | Phase 1 spike verdict; Phase 6 |
+| D26 | **The browser authenticates with a one-time bootstrap code exchanged for an HttpOnly session cookie** | An embedded UI token (v1 of D13) could be read by any local process with a plain `GET /`, including a prompt-injected agent, which could then drive every PTY. The code travels in a URL fragment to the launched browser only, is single-use with a 60 s TTL, and becomes an `HttpOnly`, `SameSite=Strict` cookie. Served HTML holds no secret. See ADR 0026. | A native wrapper (Phase 8) offers a better channel |
 
 Each decision gets a short ADR in `docs/decisions/NNNN-title.md`. Record new decisions the same way.
 
@@ -70,7 +71,7 @@ Each decision gets a short ADR in `docs/decisions/NNNN-title.md`. Record new dec
 │  Scene (R3F)      Board (list)      Inbox (hands/?)     Terminal drawer   │
 │        ▲               ▲                 ▲                 ▲  │ keystrokes │
 │        └──────── zustand store (shared reduce) ◄───────────┘  ▼            │
-└────────────────────────────▲──────────────── UI token ─────────────────────┘
+└────────────────────────────▲────────────────UI cookie ─────────────────────┘
                              │ WebSocket (127.0.0.1, Origin + Host checks)
 ┌────────────────────────────┴───────── Server (apps/server) ────────────────┐
 │  SessionManager ── spawns ──► PTY (node-pty/ConPTY) running provider CLI    │
@@ -311,7 +312,7 @@ Session record (SQLite): `status: 'running' | 'ended' | 'interrupted'`, `endReas
 3. **Database:** run migrations. If the DB is corrupt, move it to `micro-minds.db.corrupt-<ts>`, start fresh, and log a warning.
 4. **Crash recovery.** Sessions still marked `running` become `interrupted` (`crash_recovery`). For each recorded pid that's still alive, verify it's really our CLI (by command line, because Windows reuses pids) and offer "kill orphan" in the UI; never kill automatically. Run `git worktree prune` for known repos. Delete stale per-session settings files.
 5. **Preflight:** detect installed CLIs (PATH lookup plus `--version`). Login state is never checked by reading credential files.
-6. **Open the browser** with the new UI token. An old tab whose token no longer works shows "Server restarted — reload" instead of failing silently.
+6. **Open the browser** with a new one-time bootstrap link (D26). An old tab whose session no longer works shows "Server restarted, use the new window" instead of failing silently. The server console can print a fresh link on request.
 
 **While running**
 
@@ -407,7 +408,7 @@ Attention is a separate channel from health. Health goes back to `ok` after 5 mi
 
 ## 8. Transport protocol
 
-`ws://127.0.0.1:<port>/ws`. The UI token goes in the first frame (`{t:'auth', token}`) or the `Sec-WebSocket-Protocol` header, not the query string, to keep it out of logs.
+`ws://127.0.0.1:<port>/ws`. The upgrade is authorized by the HttpOnly session cookie from the bootstrap exchange (`POST /api/session`, D26) plus Origin and Host checks. No token travels in frames, URLs or the served HTML.
 
 ```ts
 // server → client
@@ -420,7 +421,6 @@ Attention is a separate channel from health. Health goes back to `ok` after 5 mi
 { t: 'error', code: string, message: string }
 
 // client → server
-{ t: 'auth', token }
 { t: 'session.create', provider, repoPath, name?, initialPrompt? }
 { t: 'session.stop', sessionId }                // graceful (§5.5)
 { t: 'session.kill', sessionId }
@@ -438,7 +438,7 @@ Every inbound frame is validated with zod (discriminated union on `t`). Oversize
 ## 9. Security and privacy (non-negotiable)
 
 1. **Bind to `127.0.0.1` only.** Refuse to start otherwise.
-2. **Two token classes (D13).** A **UI token**, random per server start and embedded in the served page, is required for the WS and for control HTTP. A **hook token**, random per session, is injected into that session's env and only accepted on that session's ingest endpoints (`POST /hooks`, `POST /otel/*`). Compare tokens in constant time.
+2. **Two credential classes (D13, D26).** The **UI session** starts from a one-time bootstrap code, delivered to the launched browser in a URL fragment and exchanged for an `HttpOnly`, `SameSite=Strict` cookie. That cookie is required for the WS and for control HTTP, and **served HTML and assets never contain a secret**. A **hook token**, random per session, is injected into that session's env and only accepted on that session's ingest endpoints (`POST /hooks`, `POST /otel/*`). Compare tokens in constant time.
 3. **Check the `Origin` and `Host` headers** on WS and HTTP, to block DNS rebinding and cross-site WS.
 4. **No credential access (D4).** Enforced in code *and* in the dev harness (§11.1).
 5. **Redaction.** `tool.summary`, `text` and the stored `raw` all go through the scrubber (API-key patterns, bearer tokens, `KEY=value` lines from env-like content, high-entropy strings). `raw` is size-capped (D14).
@@ -467,7 +467,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [x] 0.8 `.claude/skills/`: `phase-status`, `new-adapter` (the adapter checklist) and `record-fixture` (the scrub-and-commit workflow).
 - [x] 0.9 Harness evals (§11.1): `evals/harness/` with planted-violation diffs and a runner script.
 - [x] 0.10 GitHub Actions: `npm run check` on ubuntu, macos and windows.
-- [x] 0.11 ADRs 0001–0025 from §2 (0024–0025 were added after Phase 0 began).
+- [x] 0.11 ADRs 0001–0026 from §2 (0024–0026 were added after Phase 0 began).
 
 **Done when:** `npm run check` passes locally (Windows) and in CI on all 3 operating systems; Claude Code runs `npm run check` with no prompts; a blocked command is shown to be blocked by both the deny rule and the guard hook; `npm run eval:harness` runs.
 
@@ -477,7 +477,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 - [ ] 1.1 A capture sink that appends payloads to `fixtures/claude/<scenario>.jsonl`, fed by an HTTP hook and by the relay.
 - [ ] 1.2 Record scenarios: (a) Q&A, (b) read + edit, (c) failing shell command, (d) permission prompt, (e) AskUserQuestion, (f) subagent, (g) Ctrl-C, (h) process killed, (i) compaction if practical.
-- [ ] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking.
+- [ ] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
 - [ ] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
 - [ ] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
 - [ ] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
@@ -490,16 +490,16 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 **Goal:** a headless server that starts Claude agents in worktrees and produces a correct live world state.
 
-- [ ] 2.1 `packages/shared`: zod schemas, `ToolCategory`, `Thresholds`, `severity.ts`, `reduce()`. **Tests first**, replaying fixtures, including `clock.tick` scenarios.
-- [ ] 2.2 The scrubber, with its own test corpus.
+- [ ] 2.1 `packages/shared`: zod schemas, `ToolCategory`, `Thresholds`, `severity.ts`, `reduce()`. **Tests first**, replaying fixtures, including `clock.tick` scenarios. Stored events and WS frames carry a schema version (`v`), and unknown versions are handled explicitly. **Property-based tests** (fast-check) for the reducer: it never throws on any event sequence, usage totals only grow, and replaying the same events gives the same state.
+- [ ] 2.2 The scrubber, with its own test corpus plus **property-based tests**: no generated secret of a known shape survives scrubbing, and ordinary text is left alone.
 - [ ] 2.3 `ProviderAdapter` interface + `ProviderRegistry` (binary resolution, injection strategy, tool-category map), plus a **conformance test suite** that every adapter must pass.
 - [ ] 2.4 Claude adapter and fake provider, both passing conformance. The fake provider replays fixtures through `/hooks` and echoes PTY input.
-- [ ] 2.5 `WorktreeManager` (create, list, remove with a dirty check, slug rules, Windows paths), tested against a temporary repo.
-- [ ] 2.6 `SessionManager` (PTY spawn, env, hook-token issuing, headless xterm, resize, kill, exit) and preflight.
-- [ ] 2.7 `HookIngest` + `EventStore` (SQLite, append-only, retention setting) + `Clock`.
-- [ ] 2.8 WS server implementing §8.
-- [ ] 2.9 Security tests: binding, both token classes, origin/host, hook-token scope (session A's token can't post events for session B and can't open the WS), body limits, redaction.
-- [ ] 2.10 (Only if 1.4 chose the relay.) Production `hook-relay` with fail-open tests.
+- [ ] 2.5 `WorktreeManager` (create, list, remove with a dirty check, slug rules, Windows paths), tested against a temporary repo. **Safe removal:** resolve real paths, require a worktree registered in `git worktree list` under `$MICROMINDS_HOME/worktrees`, and remove only via `git worktree remove` (never a recursive delete that follows symlinks or junctions). **Git hardening against hostile repos:** argv only, `--` before paths, `-c core.fsmonitor=false` and an empty hooks path for every git command we run.
+- [ ] 2.6 `SessionManager` (PTY spawn, env, hook-token issuing, headless xterm, resize, kill, exit) and preflight. The headless xterm discards its own replies to terminal queries, so only the browser's terminal answers the CLI. Establishes the **logging conventions** every later task follows: pino with redaction paths for tokens and payloads, `sessionId` on every line, payloads only at `debug`.
+- [ ] 2.7 `HookIngest` + `EventStore` (SQLite, append-only, retention setting) + `Clock`. **Versioned, forward-only DB migrations**, each tested against a database created by the previous schema.
+- [ ] 2.8 WS server implementing §8, with a protocol version in `snapshot`, and cookie-authorized upgrades (D26). A client with a mismatched version gets a clear "reload" error instead of undefined behavior.
+- [ ] 2.9 Security tests: binding, both credential classes, the bootstrap flow (`GET /` holds no secret; codes are single-use and expire; WS and control routes reject a missing cookie, a wrong Origin or a wrong Host), origin/host, hook-token scope (session A's token can't post events for session B and can't open the WS), body limits, redaction.
+- [ ] 2.10 (Only if 1.4 chose the relay.) Production `hook-relay` with fail-open tests. It posts only to a loopback `MICROMINDS_URL`.
 - [ ] 2.11 App lifecycle (§5.6): single-instance lock, crash recovery and orphan detection, graceful shutdown with a hard deadline, sleep/wake gap handling. Integration-test each path with the fake provider.
 - [ ] 2.12 Resume (D20): capture `resumeId` from the adapter, relaunch into the same worktree and `sessionId`, and handle the edge cases (worktree gone, no id captured). The fake provider supports a `--resume` flag so this is tested in CI.
 - [ ] 2.13 `mood()` selector (§4.4), tests first, including "working vs idle is always distinct".
@@ -513,9 +513,9 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 **Goal:** a usable control panel. After this phase you can do real work in micro-minds.
 
-- [ ] 3.1 Vite + React shell; WS client with auth, reconnect, and a snapshot that replaces local state.
+- [ ] 3.1 Vite + React shell; bootstrap exchange (D26, fragment stripped immediately) and a Vite proxy for `/api` and `/ws` in dev; WS client with reconnect, and a snapshot that replaces local state. Add a **bundle-size budget** check to CI, and web coverage thresholds (docs/engineering-standards.md).
 - [ ] 3.2 zustand store applying events through the shared `reduce()`.
-- [ ] 3.3 Terminal drawer: one xterm per session, tabs, fit + resize, repaint from `pty.snapshot`.
+- [ ] 3.3 Terminal drawer: one xterm per session, tabs, fit + resize, repaint from `pty.snapshot`. **Terminal output is untrusted** (docs/security/threat-model.md): no OSC 52 clipboard writes, and links open only after a confirmation showing the real URL (reviewer rule `SEC-terminal-escape`).
 - [ ] 3.4 Board: subagent indentation, activity icons, health colors, relative times, telemetry badge.
 - [ ] 3.5 Inbox: attention items, oldest first; clicking jumps to the terminal.
 - [ ] 3.6 New Agent dialog with preflight results and recent repos.
@@ -523,18 +523,19 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [ ] 3.8 Session controls: Stop, Kill, Resume, Remove worktree (confirmed, with dirty/unpushed warnings), Quit app (confirmed when agents are running), "Server restarted — reload" banner, orphan-kill prompt.
 - [ ] 3.9 Playwright smoke test with the fake provider, including stop → resume and usage totals updating.
 - [ ] 3.10 Usage display: tokens and `≈ $` cost on each board row (hover shows the breakdown by type and model), a header showing today's total across all agents, and the API-equivalent tooltip. Nothing shown when capture is off.
+- [ ] 3.11 **Accessibility pass**: the board, inbox, dialogs and terminal tabs are fully keyboard-operable with visible focus and ARIA roles, and state is never conveyed by color alone. An axe-core check in the Playwright smoke test fails on serious violations.
 
 **Done when:** you can run 3 Claude agents at once in separate worktrees; every agent's state is on the board; a permission prompt reaches the inbox in under 1 s and one click gets you to it.
 
 ### Phase 4a: The world (placeholder scene) ← MVP complete
 
 - [ ] 4a.1 R3F canvas: floor, desk grid, isometric orthographic camera, pan/zoom, hide-scene toggle.
-- [ ] 4a.2 Character driven only by `AgentState` + `mood()`: provider color, mood face, activity icon, a distinct working animation vs a still idle pose, walk from the door to the desk.
+- [ ] 4a.2 Character driven only by `AgentState` + `mood()`: provider color, mood face, activity icon, a distinct working animation vs a still idle pose, walk from the door to the desk. Respect `prefers-reduced-motion` (no walking or bobbing; state still readable from face and icon).
 - [ ] 4a.3 Overlays: hand, ? bubble, red pulse ring, amber stale indicator, limited-telemetry marker.
 - [ ] 4a.4 Subagent spawn and despawn at side desks, with a tether.
 - [ ] 4a.5 Selection sync between scene, board and terminal, both ways.
 - [ ] 4a.6 Perspective camera toggle.
-- [ ] 4a.7 A "demo" mode for the fake provider (10 agents, 20 subagents, scripted), plus a performance pass against the budget.
+- [ ] 4a.7 A "demo" mode for the fake provider (10 agents, 20 subagents, scripted), plus a performance pass against the budget. Add a reducer throughput benchmark (events per second) so later changes can be compared against it.
 
 **Done when:** every activity, attention and health state has a distinct visual; it's all verifiable in demo mode; the budget is met.
 
@@ -625,4 +626,6 @@ The harness is code, so it gets tested too.
 - The app watches native Claude orchestration; routing by the app stays in Phase 6/9 (D19).
 - Lightweight resume in the MVP (D20), graceful shutdown (D21), app lifecycle and edge cases (§5.6).
 - Mood model with distinct working and idle states (§4.4, D22).
+- UI authentication redesigned after the threat model (D26, ADR 0026): one-time bootstrap code → HttpOnly cookie; no secret in served HTML. Security acceptance items added to tasks 1.3, 2.5, 2.6, 2.9 and 2.10.
+- Engineering standards (docs/engineering-standards.md): property-based tests, schema/protocol versioning, migrations, logging conventions, untrusted terminal output, accessibility (new task 3.11), bundle and throughput budgets, all attached to the tasks that create the code.
 - Usage and cost monitoring (D25, §5.7): OpenTelemetry capture and basic totals in the MVP (tasks 1.8, 2.14, 3.10), the full panel in Phase 6. Also added the missing session-control frames to §8.

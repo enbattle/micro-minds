@@ -1,6 +1,6 @@
 # NNNN. Short title in the imperative or as a noun phrase
 
-- Status: Proposed | Accepted | Superseded by [NNNN](NNNN-title.md) | Deprecated
+- Status: Proposed | Accepted | Superseded by `[NNNN](NNNN-title.md)` (replace with a real link) | Deprecated
 - Date: YYYY-MM-DD
 - Plan: Dxx (PLAN §2), or "new" if this adds a decision
 
