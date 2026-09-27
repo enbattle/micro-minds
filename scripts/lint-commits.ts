@@ -1,10 +1,13 @@
 // Conventional Commits lint for commit subjects and PR titles (no third-party action, no deps).
 //
 //   node scripts/lint-commits.ts --range <base>..<head>   lint `git log --format=%s <range>`
-//   PR_TITLE='feat: x' node scripts/lint-commits.ts --title   lint the PR title
+//   PR_TITLE='feat: x' node scripts/lint-commits.ts --title   lint the PR title (CI)
+//   npm run lint:title -- "feat: x"                          lint a title before creating a PR
 //
-// The PR title is read from the environment, never from argv, so CI passes it via `env:` and
-// the title's contents never reach a shell. Failures go to stderr; exit 1 on any failure.
+// In CI the PR title is read from the environment, never from argv, so CI passes it via `env:`
+// and the title's contents never reach a shell. `--title-text` is for local checks of a title
+// Claude or a person wrote (`/finish-task` step 8), where an env prefix isn't portable.
+// Failures go to stderr; exit 1 on any failure.
 
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
@@ -125,10 +128,13 @@ function main(argv: readonly string[]): number {
       return 1;
     }
     subjects = [title];
+  } else if (flag === '--title-text' && value !== undefined && argv.length === 2) {
+    subjects = [value];
   } else {
     console.error(
       'usage: node scripts/lint-commits.ts --range <base>..<head>\n' +
-        '       PR_TITLE=<title> node scripts/lint-commits.ts --title',
+        '       PR_TITLE=<title> node scripts/lint-commits.ts --title\n' +
+        '       node scripts/lint-commits.ts --title-text <title>',
     );
     return 1;
   }

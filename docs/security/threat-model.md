@@ -164,6 +164,7 @@ end up printed verbatim.
 |---|---|---|---|---|
 | I | Claude Code reads provider credentials or `.env` | Deny rules plus `PreToolUse` guard; narrow ADR 0024 exemption | [dev-harness.md](../dev-harness.md) | enforced by test (`evals/harness/guard/guard.test.ts`) |
 | E | Prompt injection via fixtures or diffs tempts rule-breaking | Scrubbed fixtures; reviewer pass; red-team evals | PLAN §11.1 | planned: task 2.16 |
+| T | Claude pushes harmful code, or data that should stay local, to GitHub | Pushes only to task and phase branches (no force, no `main`, no merge); `protect-main` and `ci-verify` rulesets; the user merges after review; `/finish-task` refuses untracked or unstaged files; secret scanning with push protection | ADR 0027; `.claude/settings.json` | enforced by test (`evals/harness/integrity/integrity.test.ts`) and rulesets |
 | E | Malicious dependency (A4) | Lockfile, `npm ci`, `save-exact`, Dependabot with a 7-day cooldown, SHA-pinned actions, `SEC-network-call` | PLAN D18; `.github/dependabot.yml` | designed |
 | I | Dev server exposed on the LAN | Vite dev server bound to `127.0.0.1`, `strictPort` | `apps/web/vite.config.ts` | designed (config, no test) |
 

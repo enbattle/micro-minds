@@ -28,12 +28,26 @@ reopen only with new evidence).
   - It's hard to get right. It needs state ("was check run after the last edit?"), it
     misfires on exploratory, docs-only or mid-task turns, and a blocked Stop can loop.
   - Being blocked repeatedly trains people to bypass hooks.
-  - The `/finish-task` skill (planned) gets most of the benefit with no friction.
+  - The `/finish-task` skill gets most of the benefit with no friction.
 - **Revisit when:** the golden-task eval or real sessions show Claude finishing tasks without
   running `npm run check`, the reviewer or the commit steps, even with `/finish-task` available.
 - **If adopted:** only block when tracked source files changed; record check runs through a
   `PostToolUse` hook on the check command; have a clear escape hatch (docs-only changes, explicit
   user override); deterministic tests in `evals/harness/`; an ADR.
+
+### Claude merges its own pull requests
+
+- **Status:** Rejected (decided 2026-09-27, ADR 0027)
+- **What:** allowing `gh pr merge` (or auto-merge) so a green, reviewed pull request lands
+  without the user.
+- **Why not:**
+  - The merge is the only step where a human looks at the change. The reviewer is a model too,
+    so without it an AI would approve its own work.
+  - Common practice for coding agents is the same split: the agent pushes and opens the pull
+    request, a human merges. Claude Code's auto-mode classifier also refuses unreviewed merges.
+  - The cost is small: one command per task, or one per phase with `/run-phase`.
+- **Revisit when:** the repo has a second human reviewer or required approvals, so a merge after
+  their approval is no longer Claude's own sign-off.
 
 ### Specialized reviewer agents (`security-reviewer`, `ui-reviewer`)
 

@@ -211,6 +211,33 @@ export function deniedBySettings(
   );
 }
 
+/**
+ * A shell-command rule pattern as an anchored regex. In `Bash(...)` and `PowerShell(...)` rules
+ * `*` matches any characters, spaces included (https://code.claude.com/docs/en/permissions),
+ * which is why a push allow rule needs deny rules for anything after the branch name.
+ */
+export function commandPatternToRegExp(pattern: string): RegExp {
+  const source = pattern
+    .split('*')
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+  return new RegExp(`^${source}$`);
+}
+
+/** Deny wins over allow; a command neither matches falls through to a prompt ("ask"). */
+export function commandDecision(
+  tool: string,
+  command: string,
+  allow: readonly PermissionRule[],
+  deny: readonly PermissionRule[],
+): 'allow' | 'deny' | 'ask' {
+  const matches = (rule: PermissionRule): boolean =>
+    rule.tool === tool && !rule.negated && commandPatternToRegExp(rule.pattern).test(command);
+  if (deny.some(matches)) return 'deny';
+  if (allow.some(matches)) return 'allow';
+  return 'ask';
+}
+
 /** A concrete path a carve-out pattern matches: `**` → `sample/file.md`, `*` → a slug. */
 export function representativePath(pattern: string): string {
   return pattern.replace(/\*\*/g, 'sample/file.md').replace(/\*/g, 'C--Users-alice-repo');

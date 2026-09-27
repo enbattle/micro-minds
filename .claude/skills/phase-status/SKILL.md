@@ -38,7 +38,7 @@ Produce a short, factual status report for micro-minds. **Do not edit any file, 
 **Could run in parallel:** N.K <title> (or "none")
 **Eval cases due with N.M:** RULE-ID, RULE-ID (or "none")
 **Overdue eval rules:** none (or RULE-ID due M.K, ticked)
-**Next action:** `/start-task N.M`
+**Next action:** `/run-phase N` (the default until the MVP ships, Phase 4a), or `/start-task N.M` for one task
 
 | Phase | Done | Total |
 |---|---|---|

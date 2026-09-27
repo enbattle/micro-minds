@@ -47,7 +47,7 @@ Imports only go *into* `packages/shared`, never out of it. Apps never import eac
 | `.claude/settings.json` | Permissions and hook registration |
 | `.claude/hooks/` | `guard.ts` (PreToolUse), `format.ts` (PostToolUse), `session-context.ts` (SessionStart) |
 | `.claude/agents/` | `reviewer`, `test-writer` |
-| `.claude/skills/` | `start-task`, `finish-task`, `phase-status`, `new-adapter`, `record-fixture` |
+| `.claude/skills/` | `start-task`, `finish-task`, `run-phase`, `phase-status`, `new-adapter`, `record-fixture` |
 | `evals/harness/` | Guard, reviewer, coverage-schedule, session-context, integrity and doc tests |
 
 Details are in [dev-harness.md](dev-harness.md).

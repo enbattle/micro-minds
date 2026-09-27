@@ -170,6 +170,7 @@ describe('buildContext', () => {
     expect(text).not.toContain('C-rule');
     expect(text).toContain('`/start-task 1.2`');
     expect(text).toContain('`/finish-task`');
+    expect(text).toContain('`/run-phase 1`');
     expect(text).not.toContain('WARNING');
   });
 
@@ -195,6 +196,7 @@ describe('buildContext', () => {
       }),
     );
     expect(text).toContain('Current phase: 4a (1 of 2 tasks ticked)');
+    expect(text).toContain('`/run-phase 4a`');
     expect(text).toMatch(/^Next task: 4a\.2$/m);
   });
 
@@ -203,6 +205,7 @@ describe('buildContext', () => {
     expect(text).toContain(`All 1 task in ${PLAN_PATH} are ticked.`);
     expect(text).not.toContain('Next task');
     expect(text).not.toContain('/start-task');
+    expect(text).not.toContain('/run-phase');
   });
 
   it.each([

@@ -9,6 +9,7 @@ import { decide, type GuardContext } from '../../../.claude/hooks/guard.ts';
 import { extractRuleCatalog } from '../reviewer/score.ts';
 import {
   collectHooks,
+  commandDecision,
   deniedBySettings,
   hardRuleIdNumbers,
   hardRuleNumbers,
@@ -85,6 +86,59 @@ describe('hook files', () => {
       true,
     );
   });
+});
+
+describe('push and PR permissions (ADR 0027)', () => {
+  const allow = parsePermissionRules(permissionList('allow'));
+  const deny = parsePermissionRules(permissionList('deny'));
+  const shells = ['Bash', 'PowerShell'] as const;
+
+  it.each([
+    'git push -u origin feat/1.1-capture-sink',
+    'git push origin fix/2.3-registry',
+    'git push -u origin phase/2-server-core',
+    'git push -u origin chore/harness-push-and-phase-runs',
+    'gh pr create --draft --base main --head phase/2-server-core --title "feat: server core (phase 2)" --body-file "b.md"',
+    'gh pr checks 8 --watch',
+    'gh pr edit phase/2-server-core --body-file "b.md"',
+    'gh pr ready phase/2-server-core',
+  ])('allows: %s', (command) => {
+    for (const shell of shells) expect(commandDecision(shell, command, allow, deny)).toBe('allow');
+  });
+
+  it.each([
+    // force
+    'git push --force origin feat/x',
+    'git push -f origin feat/x',
+    'git push origin feat/x --force',
+    'git push origin feat/x --force-with-lease',
+    'git push origin feat/x -f',
+    'git push origin +feat/x',
+    // delete
+    'git push origin feat/x -d',
+    'git push origin feat/x --delete',
+    'git push origin :feat/y',
+    'git push origin feat/x :feat/y',
+    // other refs: tags, src:dst, main
+    'git push origin feat/x v0.1',
+    'git push origin feat/x --tags',
+    'git push origin feat/x other:release',
+    'git push origin feat/x:refs/heads/main',
+    'git push origin main',
+    'git push -u origin HEAD:main',
+    // merges stay human
+    'gh pr merge 7 --merge --delete-branch',
+    'gh pr merge',
+  ])('denies: %s', (command) => {
+    for (const shell of shells) expect(commandDecision(shell, command, allow, deny)).toBe('deny');
+  });
+
+  it.each(['git push', 'git push origin release/x', 'git push upstream feat/x'])(
+    'leaves to a prompt: %s',
+    (command) => {
+      for (const shell of shells) expect(commandDecision(shell, command, allow, deny)).toBe('ask');
+    },
+  );
 });
 
 describe('guard ↔ settings: the ~/.claude exemption agrees', () => {

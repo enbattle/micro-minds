@@ -65,7 +65,8 @@ in PRs, with no automated check).
 | Changes land through PRs with green CI | `protect-main` and `ci-verify` rulesets (3 OS checks, CodeQL) | Enforced |
 | Conventional commits and PR titles | `commits` CI job (`scripts/lint-commits.ts`); `npm run lint:commits` locally | Enforced |
 | Merge commits, not squash, so per-task history survives | Repo settings: squash disabled | Enforced |
-| One task per PR, reviewer pass, checkbox ticked | CLAUDE.md "Before finishing"; `/finish-task` | Convention |
+| One commit per task, reviewer pass, checkbox ticked; one PR per task or per phase | CLAUDE.md "Before finishing"; `/finish-task`, `/run-phase` | Convention |
+| Claude pushes task and phase branches but never merges; the user's merge is the human review | `.claude/settings.json` allow and deny rules, checked against a command table in `evals/harness/integrity/` (CI); `protect-main` and `ci-verify` rulesets (ADR 0027) | Enforced |
 | Decisions recorded as ADRs | `docs/decisions/`; reviewer `ARCH-missing-adr` | Convention |
 | Docs stay accurate: no broken links, small always-loaded context | `evals/harness/docs/docs.test.ts` (CI) | Enforced |
 
@@ -77,7 +78,7 @@ in PRs, with no automated check).
 | Guard hook behavior | 215+ deterministic guard tests in CI | Enforced |
 | The harness is internally consistent: hooks exist and are registered and tested, matchers use real tool names, the guard and settings agree on exemptions, agent and skill frontmatter is valid, hard-rule numbering matches the reviewer catalog | `evals/harness/integrity/` (CI) | Enforced |
 | Sessions start with live context (branch, next task, eval rules due, dirty tree) rather than a longer CLAUDE.md | `SessionStart` hook `session-context.ts`, tested in `evals/harness/session/` | Enforced |
-| The task workflow is a procedure, not prose | `/start-task` (plan before code; Edit and Write disabled until you approve) and `/finish-task` (ordered gates) | Convention: skills, evals scheduled in 2.15 |
+| The task workflow is a procedure, not prose | `/start-task` (plan before code; Edit and Write disabled until you approve), `/finish-task` (ordered gates) and `/run-phase` (a whole phase, stopping for human steps) | Convention: skills, evals scheduled in 2.15 |
 | Every reviewer rule has an eval case, or one is scheduled | `coverage.test.ts` reads PLAN checkboxes (CI) | Enforced |
 | Reviewer quality does not regress | `npm run eval:harness -- --trials 3` at every phase gate; baseline history | Enforced at phase gates |
 | Evals for `test-writer`, skills, golden task, red-team prompts | PLAN tasks | Scheduled: 2.15, 2.16 |
