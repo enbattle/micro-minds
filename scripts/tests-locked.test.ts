@@ -410,6 +410,20 @@ describe('rule 3: not-test-only (the test-path pattern)', () => {
     { name: 'e2e/ not at the root', file: 'docs/e2e/x.md', test: false },
     { name: 'e2e- prefix without the slash', file: 'e2e-helpers/x.ts', test: false },
     { name: '__snapshots__ without a segment slash', file: 'src/__snapshots__.ts', test: false },
+    // Addendum B4: test helpers are test paths.
+    {
+      name: 'a .test-helpers.ts helper',
+      file: 'apps/server/src/providers/fake.test-helpers.ts',
+      test: true,
+    },
+    {
+      name: 'a .test-helpers.tsx helper',
+      file: 'apps/web/src/render.test-helpers.tsx',
+      test: true,
+    },
+    { name: 'test-helpers.ts without the dot segment', file: 'src/test-helpers.ts', test: false },
+    { name: '.test-helpers.js', file: 'src/a.test-helpers.js', test: false },
+    { name: '.test-helpers.ts.bak', file: 'src/a.test-helpers.ts.bak', test: false },
   ];
 
   it.each(rows)(
@@ -818,15 +832,394 @@ describe('rules 6 and 7: changes that are fine', () => {
   );
 });
 
+describe('addendum B4: test helpers are locked like tests', () => {
+  const HELPER_TS = 'apps/server/src/providers/fake.test-helpers.ts';
+  const HELPER_TSX = 'apps/web/src/render.test-helpers.tsx';
+
+  /** Base plus a lock commit containing a test and two helpers; returns the repo. */
+  function lockedWithHelpers(): string {
+    const repo = copyOf(baseTemplate);
+    write(repo, 'src/impl.test.ts', 'impl test\n');
+    write(repo, HELPER_TS, 'export const fake = 1;\n');
+    write(repo, HELPER_TSX, 'export const render = 1;\n');
+    lockCommit(repo, TASK);
+    return repo;
+  }
+
+  it(
+    'a lock with helpers, untouched → ok, helpers counted in checked',
+    () => {
+      const result = check(lockedWithHelpers());
+      expectClean(result);
+      // src/old.test.ts, src/impl.test.ts and the two helpers.
+      expect(result.checked).toBe(4);
+    },
+    TIMEOUT,
+  );
+
+  const changed: Array<Scenario & { kind: Kind }> = [
+    {
+      name: 'unstaged edit to a .test-helpers.ts',
+      act: (repo) => write(repo, HELPER_TS, 'export const fake = 2;\n'),
+      paths: [HELPER_TS],
+      kind: 'modified',
+    },
+    {
+      name: 'committed edit to a .test-helpers.tsx',
+      act: (repo) => {
+        write(repo, HELPER_TSX, 'export const render = 2;\n');
+        commitAll(repo, 'feat: implement');
+      },
+      paths: [HELPER_TSX],
+      kind: 'modified',
+    },
+    {
+      name: 'deleted .test-helpers.ts',
+      act: (repo) => remove(repo, HELPER_TS),
+      paths: [HELPER_TS],
+      kind: 'deleted',
+    },
+  ];
+
+  it.each(changed)(
+    '$name → $kind',
+    ({ act, paths, kind }) => {
+      const repo = lockedWithHelpers();
+      act(repo);
+      const result = check(repo);
+      expect(kinds(result)).toEqual([kind]);
+      for (const p of paths) expectProblem(result, kind, p);
+    },
+    TIMEOUT,
+  );
+
+  const added: Scenario[] = [
+    {
+      name: 'untracked new .test-helpers.ts',
+      act: (repo) => write(repo, 'src/new.test-helpers.ts', 'export const h = 1;\n'),
+      paths: ['src/new.test-helpers.ts'],
+    },
+    {
+      name: 'committed new .test-helpers.tsx',
+      act: (repo) => {
+        write(repo, 'apps/web/src/new.test-helpers.tsx', 'export const h = 1;\n');
+        commitAll(repo, 'feat: implement');
+      },
+      paths: ['apps/web/src/new.test-helpers.tsx'],
+    },
+  ];
+
+  it.each(added)(
+    '$name after the lock → added',
+    ({ act, paths }) => {
+      const repo = copyOf(lockedTemplate);
+      act(repo);
+      const result = check(repo);
+      expect(kinds(result)).toEqual(['added']);
+      for (const p of paths) expectProblem(result, 'added', p);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'test-helpers.ts without the dot segment, added after the lock → ok (not a test path)',
+    () => {
+      const repo = copyOf(lockedTemplate);
+      write(repo, 'src/test-helpers.ts', 'export const h = 1;\n');
+      write(repo, 'test-helpers.ts', 'export const h = 1;\n');
+      const result = check(repo);
+      expectClean(result);
+      expect(result.checked).toBe(LOCKED_CHECKED);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('addendum A1: test changes between the original lock and a revision', () => {
+  const REVISED_FIXTURE = 'fixtures/claude/basic.jsonl';
+
+  /** Runs `before` on a copy of the locked template (L1), then commits a revision lock (L2). */
+  function revise(before: (repo: string) => void): { repo: string; revision: string } {
+    const repo = copyOf(lockedTemplate);
+    before(repo);
+    write(repo, REVISED_FIXTURE, '{"hook_event_name":"SubagentStop"}\n');
+    const revision = lockCommit(repo, TASK, 'Revision-reason: the fixture was re-recorded');
+    return { repo, revision };
+  }
+
+  function hasBeforeRevision(result: LockResult, kind: Kind, repoPath: string): boolean {
+    return result.problems.some(
+      (p) => p.kind === kind && p.detail.includes(repoPath) && p.detail.includes('before revision'),
+    );
+  }
+
+  const rows: Array<{ name: string; before: (repo: string) => void; kind: Kind; path: string }> = [
+    {
+      name: 'a locked test edited in an implementation commit',
+      before: (repo) => {
+        write(repo, 'src/impl.test.ts', 'weakened\n');
+        commitAll(repo, 'feat: implement');
+      },
+      kind: 'modified',
+      path: 'src/impl.test.ts',
+    },
+    {
+      name: 'a test that predates the lock edited in an implementation commit',
+      before: (repo) => {
+        write(repo, 'src/old.test.ts', 'weakened\n');
+        commitAll(repo, 'feat: implement');
+      },
+      kind: 'modified',
+      path: 'src/old.test.ts',
+    },
+    {
+      name: 'an existing snapshot edited in an implementation commit',
+      before: (repo) => {
+        write(repo, 'src/__snapshots__/impl.test.ts.snap', 'exports[`x`] = `2`;\n');
+        commitAll(repo, 'feat: implement');
+      },
+      kind: 'modified',
+      path: 'src/__snapshots__/impl.test.ts.snap',
+    },
+    {
+      name: 'a locked test deleted in an implementation commit',
+      before: (repo) => {
+        git(repo, 'rm', '-q', 'e2e/smoke.spec.ts');
+        commitAll(repo, 'feat: implement');
+      },
+      kind: 'deleted',
+      path: 'e2e/smoke.spec.ts',
+    },
+    {
+      name: 'a new test added in an implementation commit',
+      before: (repo) => {
+        write(repo, 'src/sneaky.test.ts', 'sneaky\n');
+        commitAll(repo, 'feat: implement');
+      },
+      kind: 'added',
+      path: 'src/sneaky.test.ts',
+    },
+    {
+      name: 'a new .test-helpers.ts added in an implementation commit',
+      before: (repo) => {
+        write(repo, 'src/sneaky.test-helpers.ts', 'export const h = 1;\n');
+        commitAll(repo, 'feat: implement');
+      },
+      kind: 'added',
+      path: 'src/sneaky.test-helpers.ts',
+    },
+  ];
+
+  it.each(rows)(
+    '$name, then a revision → $kind, detail says before revision',
+    ({ before, kind, path: repoPath }) => {
+      const { repo, revision } = revise(before);
+      const result = check(repo);
+      expect(kinds(result)).toEqual([kind]);
+      expect(hasBeforeRevision(result, kind, repoPath)).toBe(true);
+      expect(result.lockSha).toBe(revision);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'a new snapshot committed before the revision → ok, recorded in notes',
+    () => {
+      const snap = 'src/__snapshots__/reduce.test.ts.snap';
+      const { repo } = revise((r) => {
+        write(r, snap, 'snap\n');
+        commitAll(r, 'feat: implement');
+      });
+      const result = check(repo);
+      expectClean(result);
+      expect(result.notes.some((note) => note.includes(snap))).toBe(true);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'a test edited and put back before the revision → ok (guards existing behavior)',
+    () => {
+      const { repo } = revise((r) => {
+        write(r, 'src/impl.test.ts', 'weakened\n');
+        commitAll(r, 'feat: try');
+        write(r, 'src/impl.test.ts', content('src/impl.test.ts'));
+        commitAll(r, 'revert: put the test back');
+      });
+      expectClean(check(repo));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'only non-test commits before the revision → ok (guards existing behavior)',
+    () => {
+      const { repo } = revise((r) => {
+        write(r, 'src/impl.ts', 'export const x = 2;\n');
+        commitAll(r, 'feat: implement');
+      });
+      expectClean(check(repo));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'A3: a change before the revision and a change after it are both reported',
+    () => {
+      const { repo } = revise((r) => {
+        write(r, 'src/impl.test.ts', 'weakened\n');
+        commitAll(r, 'feat: implement');
+      });
+      write(repo, 'e2e/smoke.spec.ts', 'changed after the revision\n');
+      const result = check(repo);
+      expect(kinds(result)).toEqual(['modified']);
+      expect(hasBeforeRevision(result, 'modified', 'src/impl.test.ts')).toBe(true);
+      expect(
+        result.problems.some(
+          (p) =>
+            p.kind === 'modified' &&
+            p.detail.includes('e2e/smoke.spec.ts') &&
+            !p.detail.includes('before revision'),
+        ),
+      ).toBe(true);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('addendum A2: late-revision', () => {
+  const rows: Array<{ name: string; between: (repo: string) => void; other: string | null }> = [
+    {
+      name: 'a lock for 2.2 between the original and the revision',
+      between: (repo) => lockCommit(repo, '2.2'),
+      other: '2.2',
+    },
+    {
+      name: 'a lock for 2.14 (a prefix-like id) between the original and the revision',
+      between: (repo) => lockCommit(repo, '2.14'),
+      other: '2.14',
+    },
+    {
+      name: 'a Test-lock: 2.2 line in the body, not the trailer block',
+      between: (repo) => commitAll(repo, 'chore: notes', 'Test-lock: 2.2', 'Prose after the line.'),
+      other: null,
+    },
+    {
+      name: 'only non-lock commits between the original and the revision',
+      between: (repo) => {
+        write(repo, 'src/impl.ts', 'export const x = 2;\n');
+        commitAll(repo, 'feat: implement');
+      },
+      other: null,
+    },
+  ];
+
+  it.each(rows)(
+    '$name → late-revision for: $other',
+    ({ between, other }) => {
+      const repo = copyOf(lockedTemplate);
+      between(repo);
+      write(repo, 'src/impl.test.ts', 'impl test, revised\n');
+      lockCommit(repo, TASK, 'Revision-reason: the spec changed');
+      const result = check(repo);
+      if (other === null) {
+        expectClean(result);
+      } else {
+        expect(kinds(result)).toEqual(['late-revision']);
+        const late = result.problems.filter((p) => p.kind === 'late-revision');
+        expect(late).toHaveLength(1);
+        expect(late[0]?.detail).toContain(other);
+      }
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "another task's lock before the original lock → no late-revision (guards existing behavior)",
+    () => {
+      const repo = copyOf(baseTemplate);
+      write(repo, 'src/zero.test.ts', 'zero\n');
+      lockCommit(repo, '2.0');
+      write(repo, 'src/impl.test.ts', 'original\n');
+      lockCommit(repo, TASK);
+      write(repo, 'src/impl.test.ts', 'revised\n');
+      lockCommit(repo, TASK, 'Revision-reason: the spec changed');
+      expectClean(check(repo));
+    },
+    TIMEOUT,
+  );
+});
+
 describe('CLI', () => {
-  function run(repo: string, args: string[]): { status: number | null; out: string; err: string } {
-    const child = spawnSync(process.execPath, [SCRIPT, ...args], {
-      cwd: repo,
-      env: gitEnv,
-      encoding: 'utf8',
-    });
+  function run(
+    cwd: string,
+    args: string[],
+    env: NodeJS.ProcessEnv = gitEnv,
+  ): { status: number | null; out: string; err: string } {
+    const child = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, env, encoding: 'utf8' });
     return { status: child.status, out: child.stdout, err: child.stderr };
   }
+
+  /** Addendum C5–C8: a CLI error that is not a lock violation. */
+  function expectCliError(res: { status: number | null; out: string; err: string }): string {
+    expect(res.status).toBe(2);
+    const lines = res.err.split(/\r?\n/).filter((line) => line.trim() !== '');
+    expect(lines).toHaveLength(1);
+    expect(`${res.out}\n${res.err}`).not.toMatch(/^\s+at /m);
+    expect(res.out).not.toMatch(/^LOCK /m);
+    return lines[0] ?? '';
+  }
+
+  it.each([
+    { name: 'an unknown ref name', ref: 'does-not-exist' },
+    { name: 'an ancestor that does not exist', ref: 'HEAD~99' },
+    { name: 'a full sha of no object', ref: '0'.repeat(40) },
+  ])(
+    'C5: --base $name → exit 2, one stderr line naming the ref, no stack trace',
+    ({ ref }) => {
+      const line = expectCliError(run(copyOf(lockedTemplate), [TASK, '--base', ref]));
+      expect(line).toContain(ref);
+      expect(line).toMatch(/resolv/i);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'C6: no --base and no origin remote → exit 2, one stderr line saying to pass --base',
+    () => {
+      const line = expectCliError(run(copyOf(lockedTemplate), [TASK]));
+      expect(line).toContain('--base');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'C7: run outside any git repository → exit 2, one stderr line saying so, no stack trace',
+    () => {
+      const outside = fs.mkdtempSync(path.join(root, 'not-a-repo-'));
+      const env = { ...gitEnv, GIT_CEILING_DIRECTORIES: path.dirname(root) };
+      // The directory really is outside any repository for git.
+      const probe = spawnSync('git', ['rev-parse', '--git-dir'], { cwd: outside, env });
+      expect(probe.status).not.toBe(0);
+      const line = expectCliError(run(outside, [TASK, '--base', 'HEAD'], env));
+      expect(line).toMatch(/git repositor/i);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'C8: a late-revision is a lock violation → exit 1 and a LOCK late-revision line',
+    () => {
+      const repo = copyOf(lockedTemplate);
+      lockCommit(repo, '2.2');
+      write(repo, 'src/impl.test.ts', 'impl test, revised\n');
+      lockCommit(repo, TASK, 'Revision-reason: the spec changed');
+      const { status, out, err } = run(repo, [TASK, '--base', baseSha]);
+      expect(status).toBe(1);
+      expect(`${out}\n${err}`).toMatch(/^LOCK late-revision: .*2\.2/m);
+    },
+    TIMEOUT,
+  );
 
   it(
     'exit 0 and a summary line when the lock holds',
