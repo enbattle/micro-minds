@@ -1,0 +1,143 @@
+{
+  "$comment": "Reviewer rules without a planted eval case yet, each due with the PLAN task that first writes the code it governs. CI fails if a due task is ticked while its rule is still listed (coverage.test.ts). Remove an entry in the same PR that adds its case. See evals/harness/README.md#growing-the-harness.",
+  "CONV-import-extension": {
+    "due": "1.8",
+    "why": "General convention; code exists since Phase 0, so cover it by the end of Phase 1"
+  },
+  "CONV-undeclared-dependency": {
+    "due": "1.8",
+    "why": "General convention; code exists since Phase 0, so cover it by the end of Phase 1"
+  },
+  "WIN-posix-shell": {
+    "due": "1.8",
+    "why": "Scripts and hooks already exist; cover it by the end of Phase 1"
+  },
+  "ARCH-missing-adr": {
+    "due": "1.8",
+    "why": "Phase 1 closes its verify items as ADRs"
+  },
+  "ARCH-scope-creep": {
+    "due": "1.8",
+    "why": "General; Phase 1 spike code is the first place scope creep is likely"
+  },
+  "HR5-hook-fail-open": {
+    "due": "1.4",
+    "why": "Relay latency and behavior are settled in task 1.4"
+  },
+  "CONV-ids-timestamps": {
+    "due": "2.1",
+    "why": "Event schema with ULIDs and server timestamps"
+  },
+  "ARCH-shared-io": {
+    "due": "2.1",
+    "why": "First real code in packages/shared (reduce, severity)"
+  },
+  "TEST-missing": {
+    "due": "2.1",
+    "why": "Tests-first work starts with the reducer"
+  },
+  "TEST-nondeterministic": {
+    "due": "2.1",
+    "why": "Reducer and clock.tick tests are the first time-sensitive tests"
+  },
+  "HR8-unscrubbed-output": {
+    "due": "2.2",
+    "why": "The scrubber"
+  },
+  "ARCH-provider-leak": {
+    "due": "2.3",
+    "why": "ProviderAdapter interface and registry"
+  },
+  "WIN-binary-resolution": {
+    "due": "2.3",
+    "why": "The registry resolves provider binaries (.cmd/.exe)"
+  },
+  "HR7-unknown-event-throws": {
+    "due": "2.4",
+    "why": "Claude adapter normalize()"
+  },
+  "TEST-no-fixture": {
+    "due": "2.4",
+    "why": "Adapter tests replay fixtures"
+  },
+  "TEST-real-cli": {
+    "due": "2.4",
+    "why": "Adapter and fake-provider tests must never call real CLIs"
+  },
+  "HR10-worktree-location": {
+    "due": "2.5",
+    "why": "WorktreeManager"
+  },
+  "WIN-home-dir": {
+    "due": "2.5",
+    "why": "Worktree and data paths under MICROMINDS_HOME"
+  },
+  "HR2-global-config-write": {
+    "due": "2.6",
+    "why": "SessionManager writes per-session settings for hook injection"
+  },
+  "HR12-steers-agent": {
+    "due": "2.6",
+    "why": "SessionManager is the first code that writes to agent PTYs"
+  },
+  "WIN-process-tree": {
+    "due": "2.6",
+    "why": "SessionManager stop and kill"
+  },
+  "SEC-token-compare": {
+    "due": "2.7",
+    "why": "HookIngest validates hook tokens"
+  },
+  "SEC-ingest-hardening": {
+    "due": "2.7",
+    "why": "HookIngest body limits, validation and rate limits"
+  },
+  "HR3-missing-ui-auth": {
+    "due": "2.8",
+    "why": "WS server authentication"
+  },
+  "HR3-missing-origin-check": {
+    "due": "2.8",
+    "why": "WS server Origin and Host checks"
+  },
+  "SEC-token-exposure": {
+    "due": "2.8",
+    "why": "UI token transport over the WS"
+  },
+  "SEC-network-call": {
+    "due": "2.8",
+    "why": "The server is complete enough to make outbound calls by task 2.8"
+  },
+  "D22-impure-mood": {
+    "due": "2.13",
+    "why": "mood() selector"
+  },
+  "SEC-telemetry-config": {
+    "due": "2.14",
+    "why": "Usage capture configures per-session OpenTelemetry"
+  },
+  "GEN-correctness": {
+    "due": "2.14",
+    "why": "Catch-all; use a realistic server bug from Phase 2"
+  },
+  "GEN-error-handling": {
+    "due": "2.14",
+    "why": "Catch-all; use a realistic server bug from Phase 2"
+  },
+  "GEN-security": {
+    "due": "2.14",
+    "why": "Catch-all; use a realistic server bug from Phase 2"
+  },
+  "GEN-performance": {
+    "due": "2.14",
+    "why": "Catch-all; use a realistic server bug from Phase 2"
+  },
+  "ARCH-ui-one-way": {
+    "due": "3.2",
+    "why": "zustand store applying events through reduce()"
+  },
+  "SEC-usage-cost-source": {
+    "due": "3.10",
+    "why": "Usage display with the API-equivalent label"
+  }
+}
