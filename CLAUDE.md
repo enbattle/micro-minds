@@ -51,7 +51,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - Never call real provider CLIs in tests. Use the fake provider.
 - Windows is first-class: use `path` APIs, not string concatenation; no POSIX-only shell in scripts; resolve `.cmd`/`.exe` binaries.
 - Check current dependency versions when installing. Don't pin from memory.
-- Start tasks with `/start-task <id>` and finish with `/finish-task`; they perform the steps below.
+- Start tasks with `/start-task <id>` and finish with `/finish-task`; they perform the steps below. Until the MVP ships (Phase 4a), run whole phases with `/run-phase <n>`, which does the same per task (ADR 0027). Claude pushes branches; the user merges.
 - Before finishing: `npm run check` green, a `reviewer` subagent pass on the diff (paste the `git diff` output into its prompt; the reviewer has no shell), eval cases for any reviewer rules due with the task (`evals/harness/reviewer/uncovered.json`; CI fails if they're overdue), one conventional commit per task (`feat(server): …`), and the task's checkbox ticked in `docs/PLAN.md`.
 - Harness changes follow the principles in `docs/dev-harness.md` (procedures and checks beat prose; add agents or hooks only on evidence).
 - If the plan is wrong or ambiguous, stop and say so. Propose the plan edit rather than guessing.

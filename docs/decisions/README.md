@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
-Short records of the decisions that shape micro-minds. ADRs 0001–0026 correspond one-to-one to
-decisions D1–D26 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
+Short records of the decisions that shape micro-minds. ADRs 0001–0027 correspond one-to-one to
+decisions D1–D27 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 
 | # | Title | Status |
 |---|---|---|
@@ -31,6 +31,7 @@ decisions D1–D26 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 | [0024](0024-harness-guard-exempts-claude-working-files.md) | Dev-harness guard exempts Claude Code working files | Accepted |
 | [0025](0025-usage-cost-from-cli-telemetry.md) | Usage and cost come from the CLI's own telemetry | Accepted |
 | [0026](0026-ui-session-bootstrap.md) | UI sessions start from a one-time code and live in an HttpOnly cookie | Accepted |
+| [0027](0027-claude-pushes-branches-humans-merge.md) | Claude pushes task and phase branches; merges stay human | Accepted |
 
 ## When to write an ADR
 

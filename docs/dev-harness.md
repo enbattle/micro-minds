@@ -32,12 +32,12 @@ Every change to the harness is judged against these, in order:
 |---|---|---|
 | Root rules | `CLAUDE.md` | Hard rules, conventions and commands, loaded in every session |
 | Package rules | `packages/*/CLAUDE.md`, `apps/*/CLAUDE.md` | Rules specific to one package |
-| Permissions | `.claude/settings.json` → `permissions` | Allow routine commands without prompts; deny dangerous or sensitive ones |
+| Permissions | `.claude/settings.json` → `permissions` | Allow routine commands without prompts, including pushes to task and phase branches and opening PRs; deny dangerous or sensitive ones, force-pushes, pushes to `main` and merges (ADR 0027) |
 | Guard hook | `.claude/hooks/guard.ts` (`PreToolUse`) | Second layer for credential and `.env` protection (see below) |
 | Format hook | `.claude/hooks/format.ts` (`PostToolUse`) | Runs Biome on every file Claude edits |
 | Session context hook | `.claude/hooks/session-context.ts` (`SessionStart`) | Injects live state (branch, next task, eval rules due with it, dirty tree) so CLAUDE.md stays small |
 | Subagents | `.claude/agents/` | `reviewer` (read-only diff review; pass it the `git diff` output, since it has no shell), `test-writer` |
-| Workflow skills | `.claude/skills/start-task`, `finish-task` | Turn CLAUDE.md's task workflow into procedures: scope and plan a task; check, review, tick, commit, then hand the push/PR to you |
+| Workflow skills | `.claude/skills/start-task`, `finish-task`, `run-phase` | Turn CLAUDE.md's task workflow into procedures: scope and plan a task; check, review, tick, commit, push and open the PR; or run a whole phase as one PR. You merge |
 | Other skills | `.claude/skills/` | `phase-status`, `new-adapter`, `record-fixture` |
 | Harness evals | `evals/harness/` | Deterministic, in CI: guard, coverage schedule, session context, harness integrity, doc links and budgets. Manual (they spend tokens): reviewer evals |
 | Reference docs | `docs/glossary.md`, `docs/architecture.md` | Precise terms, and a map of the code as it exists |
@@ -52,12 +52,27 @@ Every change to the harness is judged against these, in order:
    (acceptance criteria, eval cases, scheduled standards), and plans before any code.
 3. Implement, tests first where CLAUDE.md requires it.
 4. `/finish-task` runs the gates in order (check, coverage, eval schedule, reviewer), ticks the
-   checkbox, updates docs, commits, and prints the push/PR commands for you. Claude can't push
-   (`git push` is denied). It reviews **what is staged**, so the check, the reviewer and the commit
-   all see the same bytes. It's user-invoked only, because it commits.
+   checkbox, updates docs, commits, pushes the branch, opens the PR and waits for CI. It never
+   merges: it ends with the merge command for you (ADR 0027). It reviews **what is staged**, so the
+   check, the reviewer and the commit all see the same bytes. It's user-invoked only, because it
+   commits and pushes.
+
+**Whole phases:** `/run-phase <n>` repeats steps 2–4 for every remaining task of a phase on one
+branch, `phase/<n>-<slug>`, with one commit per task and one draft PR that CI checks on every
+push. Starting it approves that phase's per-task plans, commits, pushes and eval runs. It stops
+for steps only you can do or decide (for example Phase 1's recordings, or an ambiguous PLAN
+task), and at the end it runs the phase gate, marks the PR ready and hands you the merge. Run it
+again to resume after a stop.
+
+**Which to use:** until the MVP ships (Phase 4a), `/run-phase` is the default: the aim is a usable
+app soon, and a phase run cuts the human round-trips without dropping any gate. After that,
+per-task PRs are the default again, because changes then land in an app people use (ADR 0027).
+
+Claude can't change its own permissions: changes to `.claude/settings.json` are yours to apply.
 
 Flags: `/start-task <id> --branch` creates the proposed branch without asking.
 `/finish-task --run-evals` allows the token-spending eval runs; without it the skill asks first.
+`/run-phase` always runs them (starting it is the approval).
 
 ## Where knowledge goes (memory policy)
 
