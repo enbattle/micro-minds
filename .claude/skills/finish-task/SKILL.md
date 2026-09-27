@@ -37,7 +37,7 @@ Uncommitted changes (`git status --short`):
    - Stage the task's files by explicit path: `git add -- <path> ...`. Never `git add -A`, `git add .` or `git commit -a`: other sessions may share this tree.
    - Anything in `git status --short` that isn't the task's (another task, a scratch file): list it and **stop**. The user moves it out of the way; you don't stash, reset or delete it.
    - Pass when every `git status --short` line has a space in the second column and none is `??`.
-5. List the change: `git diff --cached BASE --name-only`. On a task branch that's `git diff --cached --merge-base origin/main --name-only` (the branch's commits plus the index, against where it left `origin/main`; `origin/main` is as of the last fetch). On a phase branch it's `git diff --cached <L>^ --name-only` (this task only). Keep this file list for steps 2, 4 and 8.
+5. List the change: `git diff --cached BASE --name-only`. On a task branch that's `git diff --cached --merge-base origin/main --name-only` (the branch's commits plus the index, against where it left `origin/main`; `origin/main` is as of the last fetch). On a phase branch it's the same command with BASE as defined above (the parent of the task's first `Test-infra: <id>` or `Test-lock: <id>` commit), so the list covers this task only, test infrastructure included. Keep this file list for steps 2, 4 and 8.
 6. **Code task without a lock commit:** **stop**. Its tests must come from the test writer first (`/start-task` step 6); tests the implementer wrote don't count.
 
 ## 1. `npm run check`
