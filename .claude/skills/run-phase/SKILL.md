@@ -59,7 +59,7 @@ Don't skip ahead to later tasks while one is blocked: PLAN §14.1 is in order.
 When the last task is ticked, `/finish-task` step 5.2 has already run the phase gate. Then:
 
 1. **Completeness audit** (ADR 0028). Each review checked one task; nothing yet checked that the whole phase was carried out. Invoke a fresh `general-purpose` agent (never a fork) with only: the phase's section of `docs/PLAN.md` (heading to the next phase heading), and the instruction to run `git diff origin/main...HEAD` and read what it needs. Nothing from this conversation. Ask it to return a table with one row per task clause and per **Done when** clause: the clause, the evidence (file and line, test name, or commit), and a status of implemented, deliberately changed (with whether the stated reason holds), partial, or missing. It must not edit anything; snapshot the repository around it as in `/finish-task` step 4.1.
-2. **Partial or missing rows:** if the fix is inside the phase's scope, make it as a follow-up commit through the same gates (`/finish-task` steps 1–4 and 7, subject `fix(<scope>): <what> (<id>)`); one round, then report what's left. Outside scope: report it as unmet.
+2. **Partial or missing rows:** if the fix is inside the phase's scope, make it as a **new unit of work** with the id `<id>-fix` (the task the row belongs to), never by reopening that task: its lock was checked while it was open, and later tasks' lock commits may since have changed the same tests. The unit's clauses are the audit rows it closes. For code, a fresh `test-writer` gets the task text and those rows (`/start-task` step 6 with id `<id>-fix`); then implement and run `/finish-task` steps 0.4–4 and 7 with id `<id>-fix`, where BASE is the parent of the `Test-lock: <id>-fix` commit (or `HEAD` for docs only), and the commit subject is `fix(<scope>): <what> (<id>)`. No PLAN tick (the task is already ticked). One round, then report what's left. Outside scope: report it as unmet.
 3. Append to the pull request body: `## Completeness audit` (the table), `## Phase gate` (the baseline row and the eval result) and `## Done when`, with each clause of the phase's **Done when** marked met, unmet or needs manual check, with evidence.
 4. If every clause is met or only needs a manual check: `gh pr ready <branch>`, then `gh pr checks <branch> --watch` (gate on the exit code).
 5. Report, and **stop**:
@@ -75,7 +75,7 @@ Completeness audit: <n> implemented, <deviations>, <partial/missing> · Phase ga
 Manual checks left for you: <list, or "none">
 
 Pull request: #<number> <url>
-Review it (commit by commit works: one commit per task), then merge it yourself:
+Review it (commit by commit works: each task is its locked test commit, then its implementation commit), then merge it yourself:
 
 gh pr merge <number> --merge --delete-branch
 ```

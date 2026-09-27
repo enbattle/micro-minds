@@ -1,6 +1,8 @@
 # 0027. Claude pushes task and phase branches; merges stay human
 
-- Status: Accepted
+- Status: Accepted. Amended by [0028](0028-independent-tests-and-adversarial-review.md): each
+  task now lands as a locked test commit plus an implementation commit, not one commit, and
+  reviews run as described there.
 - Date: 2026-09-27
 - Plan: D27 (PLAN §2)
 

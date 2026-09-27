@@ -24,7 +24,7 @@ in PRs, with no automated check).
 
 | Practice | Enforced by | Status |
 |---|---|---|
-| Tests first for `packages/shared` and adapters, fixture-driven | reviewer `TEST-missing`, `TEST-no-fixture`; `/finish-task` | Convention |
+| Tests first for every code change, fixture-driven where fixtures exist (who writes them and the lock: see the ADR 0028 rows below) | reviewer `TEST-missing`, `TEST-no-fixture`, `TEST-criteria`; `/finish-task` | Convention |
 | Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
 | Coverage thresholds for `apps/server` and `packages/hook-relay` | Added with the first real code in each | Scheduled: 2.6, 2.10 |
 | Coverage thresholds for `apps/web` | Added with the web shell | Scheduled: 3.1 |
@@ -65,7 +65,7 @@ in PRs, with no automated check).
 | Changes land through PRs with green CI | `protect-main` and `ci-verify` rulesets (3 OS checks, CodeQL) | Enforced |
 | Conventional commits and PR titles | `commits` CI job (`scripts/lint-commits.ts`); `npm run lint:commits` locally | Enforced |
 | Merge commits, not squash, so per-task history survives | Repo settings: squash disabled | Enforced |
-| One commit per task, reviewer pass, checkbox ticked; one PR per task or per phase | CLAUDE.md "Before finishing"; `/finish-task`, `/run-phase` | Convention |
+| Per task: a locked test commit (code tasks), then one implementation commit, an independent review, the checkbox ticked; one PR per task or per phase | CLAUDE.md "Before finishing"; `/finish-task`, `/run-phase` | Convention |
 | Claude pushes task and phase branches but never merges; the user's merge is the human review | `.claude/settings.json` allow and deny rules, checked against a command table in `evals/harness/integrity/` (CI); `protect-main` and `ci-verify` rulesets (ADR 0027) | Enforced |
 | Decisions recorded as ADRs | `docs/decisions/`; reviewer `ARCH-missing-adr` | Convention |
 | Docs stay accurate: no broken links, small always-loaded context | `evals/harness/docs/docs.test.ts` (CI) | Enforced |

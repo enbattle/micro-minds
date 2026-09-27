@@ -125,7 +125,7 @@ Use these IDs exactly. Use a `GEN-*` ID only when no specific rule fits.
 
 | ID | Rule | Default | Typical evidence |
 |---|---|---|---|
-| `TEST-missing` | Behavior changes in `packages/shared`, adapters and server logic come with tests in the same change (tests first for shared and adapters). | major | new reducer branch with no test hunk |
+| `TEST-missing` | Behavior changes in `packages/shared`, adapters and server logic come with tests in the same change (for code tasks, written first by the test writer and locked; see `TEST-lock`). | major | new reducer branch with no test hunk |
 | `TEST-no-fixture` | Adapter and reducer tests replay `fixtures/<provider>/*.jsonl`; a bug fix adds a fixture reproducing it. | major | hand-built payload object where a fixture exists, fix without a fixture |
 | `TEST-real-cli` | Tests never spawn real provider CLIs (`claude`, `gemini`, `codex`); they use the fake provider. | blocker | `spawn('claude')` in a test |
 | `TEST-nondeterministic` | Tests don't depend on wall-clock time, real network, randomness or machine paths without fakes. | major | `expect(state.lastEventAt).toBeLessThan(Date.now())` |

@@ -46,7 +46,7 @@ Run `npm run check` on its own and gate on **its exit code**. Never pipe it (`| 
 
 Fail → **stop** and report which part failed (lint, typecheck or which test file).
 
-For a code task, then run `npm run tests:locked -- <id>` the same way (on a task branch; on a phase branch add `--base origin/main`). Fail → **stop**: a test was changed after the lock. Restore it from the lock commit, or use the one revision (`/start-task` step 6.6); never edit it yourself.
+For a code task, then run `npm run tests:locked -- <id>` the same way (on a task branch; on a phase branch add `--base origin/main`). It checks **only the unit that is open now**: an earlier task's lock is never re-checked, because a later task's lock commit may legitimately have changed the same tests (ADR 0028). Fail → **stop**: a test was changed after the lock. Restore it from the lock commit, or use the one revision (`/start-task` step 6.6); never edit it yourself.
 
 ## 2. Coverage
 
