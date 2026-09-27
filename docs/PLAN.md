@@ -415,7 +415,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 **Goal:** a repo where Claude Code can work safely and verifiably from day one, on Windows, macOS and Linux.
 
-- [x] 0.1 Scaffold the npm-workspaces monorepo (`packages/shared`, `packages/hook-relay`, `apps/server`, `apps/web`), with a strict shared tsconfig, Biome and Vitest. Set `engines.node >=24` with `engine-strict=true` in `.npmrc`.
+- [x] 0.1 Scaffold the npm-workspaces monorepo (`packages/shared`, `packages/hook-relay`, `apps/server`, `apps/web`), with a strict shared tsconfig, Biome and Vitest. Set `engines.node >=24.2.0` (the hooks need `import.meta.main`) with `engine-strict=true` in `.npmrc`.
 - [x] 0.2 Root scripts: `dev`, `build`, `test`, `lint`, `format`, `typecheck`, `check` (= lint + typecheck + test), `eval:harness` (`e2e` is added with Playwright in task 3.9).
 - [x] 0.3 **node-pty smoke test on Windows**: install it and spawn `cmd.exe`/`pwsh` through ConPTY. Record in an ADR whether prebuilt binaries worked or VS Build Tools were needed.
 - [x] 0.4 Root `CLAUDE.md` plus a short `CLAUDE.md` in each package (its purity and I/O rules, and its test command).

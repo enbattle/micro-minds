@@ -6,7 +6,7 @@ Building a town of models and agents working collaboratively.
 
 ## Development
 
-Requires Node 24+.
+Requires Node 24.2 or newer.
 
 ```sh
 npm install

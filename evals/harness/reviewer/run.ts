@@ -7,10 +7,11 @@
 //
 // Node built-ins only. Parsing and scoring live in score.ts (unit-tested); this file does I/O.
 
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { accessSync, constants, readdirSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import process from 'node:process';
 import { parseArgs } from 'node:util';
 import {
   buildClaudeArgs,
@@ -173,6 +174,22 @@ interface ProcessOutput {
   timedOut: boolean;
 }
 
+/**
+ * Kills the child and everything it started. On Windows `child.kill()` only ends the direct
+ * child, which for a `.cmd` shim is `cmd.exe`, leaving `claude` running (and spending tokens).
+ */
+function killTree(child: ChildProcess): void {
+  if (process.platform === 'win32' && child.pid !== undefined) {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+      shell: false,
+      windowsHide: true,
+      stdio: 'ignore',
+    }).on('error', () => child.kill());
+    return;
+  }
+  child.kill('SIGKILL');
+}
+
 function runClaude(
   binary: ResolvedBinary,
   args: readonly string[],
@@ -187,18 +204,10 @@ function runClaude(
       : spawn(binary.path, [...args], { cwd: REPO_ROOT, shell: false, windowsHide: true });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-    }, timeoutMs);
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    child.on('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on('close', (code) => {
+    let settled = false;
+    const settle = (code: number | null, timedOut: boolean): void => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve({
         code,
@@ -206,7 +215,23 @@ function runClaude(
         stderr: Buffer.concat(stderr).toString('utf8'),
         timedOut,
       });
+    };
+    const timer = setTimeout(() => {
+      killTree(child);
+      // A surviving grandchild can keep the pipes open, so don't wait for 'close'.
+      child.stdout.destroy();
+      child.stderr.destroy();
+      settle(null, true);
+    }, timeoutMs);
+    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
     });
+    child.on('close', (code) => settle(code, false));
     child.stdin.on('error', () => {
       // EPIPE if claude exits before reading stdin; the exit code and stderr explain why.
     });
