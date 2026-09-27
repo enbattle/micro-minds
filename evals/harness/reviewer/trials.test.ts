@@ -351,9 +351,10 @@ describe('formatBaselineRow', () => {
 
 describe('cell', () => {
   it.each([
-    ['a|b', 'a|b'],
-    ['a|b', 'a\\|b'],
-    ['C:path', 'C:\\path'],
+    // String.raw keeps the backslashes literal, so each row reads as the actual text.
+    [String.raw`a|b`, String.raw`a\|b`],
+    [String.raw`a\|b`, String.raw`a\\\|b`],
+    [String.raw`C:\path`, String.raw`C:\\path`],
     ['line1\nline2\r\nline3', 'line1 line2 line3'],
   ])('escapes %j', (input, expected) => {
     expect(cell(input)).toBe(expected);
