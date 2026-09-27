@@ -1,0 +1,32 @@
+{
+  "name": "micro-minds",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A local app that runs AI coding CLI sessions in embedded terminals and visualizes every agent and subagent as a character.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24.2.0"
+  },
+  "scripts": {
+    "postinstall": "node scripts/fix-node-pty.ts",
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "biome check --error-on-warnings .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit -p . && npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "eval:harness": "node evals/harness/reviewer/run.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "24.19.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}

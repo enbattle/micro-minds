@@ -1,0 +1,5 @@
+{
+  "mustFind": ["WIN-path-concat"],
+  "mustNotFind": ["HR10-worktree-location", "HR2-global-config-write", "CONV-env-access"],
+  "notes": "Worktree and settings paths are built with + and template strings, and the repo name is found with split('/'), which fails for C:\\ paths (D11). The layout itself matches D12 and §5.2, and the branch name is a git ref where '/' is correct."
+}

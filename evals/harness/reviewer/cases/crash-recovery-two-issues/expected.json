@@ -1,0 +1,5 @@
+{
+  "mustFind": ["CONV-env-access", "HR11-auto-destructive"],
+  "mustNotFind": ["WIN-path-concat", "WIN-process-tree", "HR1-credential-access"],
+  "notes": "Two planted issues: process.env read outside apps/server/src/config, and orphaned CLIs killed automatically during crash recovery (hard rule 11, PLAN §5.6: offer \"kill orphan\", never kill automatically). Paths use node:path and the whole tree is killed after a pid check, so the Windows rules must not fire."
+}

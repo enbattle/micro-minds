@@ -1,0 +1,70 @@
+diff --git a/apps/server/src/hooks/pipeline.ts b/apps/server/src/hooks/pipeline.ts
+new file mode 100644
+index 0000000..2f836cc
+--- /dev/null
++++ b/apps/server/src/hooks/pipeline.ts
+@@ -0,0 +1,26 @@
++import type { AgentEvent } from '@micro-minds/shared';
++import type { ProviderAdapter } from '../providers/adapter.ts';
++import { capRaw, scrubRaw } from '../scrub/scrub.ts';
++import type { EventStore } from '../store/event-store.ts';
++import type { Broadcaster } from '../ws/broadcast.ts';
++import type { EventStamp } from './stamp.ts';
++
++export interface PipelineDeps {
++  adapter: ProviderAdapter;
++  store: EventStore;
++  broadcaster: Broadcaster;
++  stamp: EventStamp;
++}
++
++/** Hook payload → normalized event → event store → every WS client. */
++export function ingestHookPayload(deps: PipelineDeps, sessionId: string, payload: unknown): void {
++  const facts = deps.adapter.normalize(payload);
++  const event: AgentEvent = {
++    ...facts,
++    ...deps.stamp.next(sessionId),
++    provider: deps.adapter.provider,
++    raw: capRaw(scrubRaw(payload), { keepFull: facts.kind === 'unknown' }),
++  };
++  deps.store.append(event);
++  deps.broadcaster.publishEvent(event);
++}
+diff --git a/apps/server/src/ws/broadcast.ts b/apps/server/src/ws/broadcast.ts
+new file mode 100644
+index 0000000..6de5fdb
+--- /dev/null
++++ b/apps/server/src/ws/broadcast.ts
+@@ -0,0 +1,32 @@
++import type { AgentEvent } from '@micro-minds/shared';
++import type { WebSocket } from 'ws';
++
++export type ServerFrame =
++  | { t: 'event'; event: AgentEvent }
++  | { t: 'pty.exit'; sessionId: string; code: number };
++
++/** Fans server frames out to every authenticated WS client. */
++export class Broadcaster {
++  readonly #clients = new Set<WebSocket>();
++
++  add(socket: WebSocket): void {
++    this.#clients.add(socket);
++    socket.once('close', () => this.#clients.delete(socket));
++  }
++
++  /** Pushes a stored event to every client, which feeds it through the shared reduce(). */
++  publishEvent(event: AgentEvent): void {
++    this.#send({ t: 'event', event });
++  }
++
++  publishExit(sessionId: string, code: number): void {
++    this.#send({ t: 'pty.exit', sessionId, code });
++  }
++
++  #send(frame: ServerFrame): void {
++    const data = JSON.stringify(frame);
++    for (const socket of this.#clients) {
++      if (socket.readyState === socket.OPEN) socket.send(data);
++    }
++  }
++}

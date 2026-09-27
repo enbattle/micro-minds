@@ -1,0 +1,36 @@
+diff --git a/apps/server/src/http/listen.ts b/apps/server/src/http/listen.ts
+new file mode 100644
+index 0000000..2e79fe7
+--- /dev/null
++++ b/apps/server/src/http/listen.ts
+@@ -0,0 +1,30 @@
++import type { FastifyInstance } from 'fastify';
++import type { ServerConfig } from '../config/server-config.ts';
++
++export interface ListenResult {
++  url: string;
++}
++
++/**
++ * Starts the HTTP + WS server on the configured port. Fails fast when the port is taken
++ * instead of picking another one (PLAN §5.6 step 2).
++ */
++export async function listen(app: FastifyInstance, config: ServerConfig): Promise<ListenResult> {
++  try {
++    await app.listen({ host: '0.0.0.0', port: config.port });
++  } catch (error: unknown) {
++    if (isAddressInUse(error)) {
++      throw new Error(
++        `Port ${config.port} is already in use. Stop the other process or set MICROMINDS_PORT.`,
++      );
++    }
++    throw error;
++  }
++  return { url: `http://127.0.0.1:${config.port}` };
++}
++
++function isAddressInUse(error: unknown): boolean {
++  return (
++    typeof error === 'object' && error !== null && 'code' in error && error.code === 'EADDRINUSE'
++  );
++}

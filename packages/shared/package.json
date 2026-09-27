@@ -1,0 +1,17 @@
+{
+  "name": "@micro-minds/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Event schema, severity rules and the pure world-state reducer. No I/O.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "vitest": "5.0.2"
+  }
+}

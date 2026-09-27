@@ -1,0 +1,63 @@
+diff --git a/apps/server/src/worktrees/paths.test.ts b/apps/server/src/worktrees/paths.test.ts
+new file mode 100644
+index 0000000..213d88a
+--- /dev/null
++++ b/apps/server/src/worktrees/paths.test.ts
+@@ -0,0 +1,23 @@
++import os from 'node:os';
++import path from 'node:path';
++import { describe, expect, it } from 'vitest';
++import { worktreeLocation } from './paths.ts';
++
++const HOME = path.join(os.tmpdir(), 'micro-minds-test-home');
++const SESSION = '01J9ZQ4X7M3V6T8K2R5N0PWYBD';
++
++describe('worktreeLocation', () => {
++  it.each([
++    { name: 'plain repo', repo: path.join(os.tmpdir(), 'projects', 'micro-minds'), slug: 'micro-minds' },
++    { name: 'trailing separator', repo: path.join(os.tmpdir(), 'projects', 'My App') + path.sep, slug: 'my-app' },
++  ])('$name → <home>/worktrees/$slug/<id>', ({ repo, slug }) => {
++    expect(worktreeLocation(HOME, repo, SESSION)).toEqual({
++      dir: path.join(HOME, 'worktrees', slug, SESSION),
++      branch: `micro-minds/${SESSION}`,
++    });
++  });
++
++  it.each(['../../etc', 'abc', `${SESSION}/..`, ''])('rejects session id %j', (id) => {
++    expect(() => worktreeLocation(HOME, os.tmpdir(), id)).toThrow('invalid session id');
++  });
++});
+diff --git a/apps/server/src/worktrees/paths.ts b/apps/server/src/worktrees/paths.ts
+new file mode 100644
+index 0000000..32a8c6c
+--- /dev/null
++++ b/apps/server/src/worktrees/paths.ts
+@@ -0,0 +1,28 @@
++import path from 'node:path';
++import { slugify } from './slug.ts';
++
++export interface WorktreeLocation {
++  dir: string;
++  branch: string;
++}
++
++const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
++
++/**
++ * Where a session's worktree lives: `<home>/worktrees/<repo-slug>/<sessionId>` (PLAN D12).
++ * `home` is MICROMINDS_HOME from the typed server config. The session id is checked so it can
++ * never escape the worktrees directory.
++ */
++export function worktreeLocation(
++  home: string,
++  repoPath: string,
++  sessionId: string,
++): WorktreeLocation {
++  if (!ULID.test(sessionId)) throw new Error(`invalid session id: ${sessionId}`);
++  const repoSlug = slugify(path.basename(path.resolve(repoPath))) || 'repo';
++  return {
++    dir: path.join(home, 'worktrees', repoSlug, sessionId),
++    // A git ref name, not a filesystem path: always forward slashes.
++    branch: `micro-minds/${sessionId}`,
++  };
++}

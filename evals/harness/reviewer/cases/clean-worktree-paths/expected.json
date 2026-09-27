@@ -1,0 +1,5 @@
+{
+  "mustFind": [],
+  "mustNotFind": ["WIN-path-concat", "HR10-worktree-location", "GEN-security", "TEST-missing"],
+  "notes": "Clean counterpart of path-string-concat: node:path everywhere, ULID-checked session id (no traversal), branch kept as a git ref, table-driven tests built with path.join. No blocker or major finding is expected."
+}

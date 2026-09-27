@@ -1,0 +1,5 @@
+{
+  "mustFind": ["HR8-raw-leak"],
+  "mustNotFind": ["HR3-localhost-bind", "CONV-any", "HR9-impure-reducer", "HR8-unscrubbed-output"],
+  "notes": "The pipeline stores a scrubbed, capped raw (correct) and then broadcasts the same event object, raw included, to every WS client (D14, PLAN §8: raw stripped by default)."
+}

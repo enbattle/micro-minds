@@ -1,0 +1,16 @@
+diff --git a/packages/shared/src/reduce.ts b/packages/shared/src/reduce.ts
+index a2964b0..df102bc 100644
+--- a/packages/shared/src/reduce.ts
++++ b/packages/shared/src/reduce.ts
+@@ -7,8 +7,10 @@ export function reduce(state: WorldState, e: AgentEvent, cfg: Thresholds): World
+   if (e.kind === 'clock.tick') return tick(state, e.ts, cfg);
+   const current = state.agents[e.agentId];
+   if (current === undefined) return state;
++  // Replayed fixtures carry old timestamps; use the receive time so the board shows
++  // "just now" instead of "3 days ago" after a replay.
+   const next: AgentState = applyHealth(
+-    { ...current, activity: activityFor(current.activity, e), lastEventAt: e.ts },
++    { ...current, activity: activityFor(current.activity, e), lastEventAt: Date.now() },
+     e,
+     cfg,
+   );

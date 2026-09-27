@@ -1,0 +1,12 @@
+{
+  "mustFind": [],
+  "mustNotFind": [
+    "HR4-hook-token-scope",
+    "SEC-token-compare",
+    "SEC-ingest-hardening",
+    "CONV-unvalidated-boundary",
+    "HR3-missing-origin-check",
+    "TEST-missing"
+  ],
+  "notes": "Clean: POST /hooks with a body limit, zod-parsed headers, Host allow-list, Origin refusal, constant-time per-session token check, bare 404s and a per-session rate limit, plus tests including cross-session token misuse. No blocker or major finding is expected."
+}

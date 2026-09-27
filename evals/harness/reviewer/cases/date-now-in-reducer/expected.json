@@ -1,0 +1,5 @@
+{
+  "mustFind": ["HR9-impure-reducer"],
+  "mustNotFind": ["CONV-any", "HR3-localhost-bind", "HR8-raw-leak", "CONV-erasable-syntax"],
+  "notes": "A modification that replaces lastEventAt: e.ts with Date.now() inside reduce(), with a plausible comment. Breaks purity and deterministic replay (hard rule 9, D15)."
+}

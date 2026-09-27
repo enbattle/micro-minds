@@ -1,0 +1,34 @@
+# Dependabot (PLAN task 0.10). Minor and patch updates are grouped into one PR per ecosystem
+# to keep noise down; major updates are left ungrouped so each gets its own PR and review.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Actions are pinned to full commit SHAs; Dependabot bumps the SHA and the `# vX.Y.Z` comment.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    # Root directory covers every workspace through the single committed package-lock.json (D18).
+    directory: /
+    schedule:
+      interval: weekly
+    # Wait a week before proposing a freshly published version (supply-chain safety).
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]

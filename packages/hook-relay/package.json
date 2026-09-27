@@ -1,0 +1,17 @@
+{
+  "name": "@micro-minds/hook-relay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fail-open hook command for providers without native HTTP hooks (PLAN §5.1).",
+  "type": "module",
+  "exports": {
+    ".": "./src/main.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "vitest": "5.0.2"
+  }
+}

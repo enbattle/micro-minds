@@ -1,0 +1,34 @@
+diff --git a/apps/server/src/ws/inbound.ts b/apps/server/src/ws/inbound.ts
+new file mode 100644
+index 0000000..d37afbf
+--- /dev/null
++++ b/apps/server/src/ws/inbound.ts
+@@ -0,0 +1,28 @@
++import type { RawData } from 'ws';
++import type { SessionManager } from '../sessions/session-manager.ts';
++
++export type ClientFrame =
++  | { t: 'pty.input'; sessionId: string; data: string }
++  | { t: 'pty.resize'; sessionId: string; cols: number; rows: number }
++  | { t: 'session.kill'; sessionId: string };
++
++export const MAX_FRAME_BYTES = 64 * 1024;
++
++/** Handles one frame from an already-authenticated client (PLAN §8). */
++export function handleClientFrame(raw: RawData, sessions: SessionManager): void {
++  const text = raw.toString();
++  if (Buffer.byteLength(text, 'utf8') > MAX_FRAME_BYTES) return;
++  const frame = JSON.parse(text) as ClientFrame;
++  switch (frame.t) {
++    case 'pty.input':
++      sessions.write(frame.sessionId, frame.data);
++      return;
++    case 'pty.resize':
++      sessions.resize(frame.sessionId, frame.cols, frame.rows);
++      return;
++    case 'session.kill':
++      // Explicit user action from the Kill button (PLAN §5.5 step 5).
++      sessions.kill(frame.sessionId);
++      return;
++  }
++}

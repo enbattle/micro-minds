@@ -1,0 +1,46 @@
+diff --git a/apps/server/src/ws/authenticate.ts b/apps/server/src/ws/authenticate.ts
+new file mode 100644
+index 0000000..c2e2800
+--- /dev/null
++++ b/apps/server/src/ws/authenticate.ts
+@@ -0,0 +1,40 @@
++import { timingSafeEqual } from 'node:crypto';
++import { z } from 'zod';
++
++const AuthFrame = z.object({ t: z.literal('auth'), token: z.string().min(1).max(256) });
++
++export interface TokenStore {
++  readonly uiToken: string;
++  /** Hook tokens of live sessions, keyed by our sessionId. */
++  hookTokens(): Iterable<readonly [sessionId: string, token: string]>;
++}
++
++export type Principal = { kind: 'ui' } | { kind: 'session'; sessionId: string };
++
++export type AuthResult =
++  | { ok: true; principal: Principal }
++  | { ok: false; reason: 'bad_frame' | 'bad_token' };
++
++function tokenEquals(a: string, b: string): boolean {
++  const left = Buffer.from(a, 'utf8');
++  const right = Buffer.from(b, 'utf8');
++  return left.length === right.length && timingSafeEqual(left, right);
++}
++
++/**
++ * Authenticates the first frame on a new WS connection. The browser UI sends the UI token.
++ * Tooling running inside a session (it has MICROMINDS_HOOK_TOKEN in its env) may also attach
++ * with its hook token, e.g. to stream its own PTY output.
++ */
++export function authenticateFirstFrame(frame: unknown, tokens: TokenStore): AuthResult {
++  const parsed = AuthFrame.safeParse(frame);
++  if (!parsed.success) return { ok: false, reason: 'bad_frame' };
++  const { token } = parsed.data;
++  if (tokenEquals(token, tokens.uiToken)) return { ok: true, principal: { kind: 'ui' } };
++  for (const [sessionId, hookToken] of tokens.hookTokens()) {
++    if (tokenEquals(token, hookToken)) {
++      return { ok: true, principal: { kind: 'session', sessionId } };
++    }
++  }
++  return { ok: false, reason: 'bad_token' };
++}

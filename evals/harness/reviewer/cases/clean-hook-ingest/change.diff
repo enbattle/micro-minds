@@ -1,0 +1,130 @@
+diff --git a/apps/server/src/hooks/ingest-route.test.ts b/apps/server/src/hooks/ingest-route.test.ts
+new file mode 100644
+index 0000000..ce73ad1
+--- /dev/null
++++ b/apps/server/src/hooks/ingest-route.test.ts
+@@ -0,0 +1,64 @@
++import Fastify from 'fastify';
++import { describe, expect, it, vi } from 'vitest';
++import { FakeSessionRegistry } from '../sessions/fake-session-registry.ts';
++import { HOOK_BODY_LIMIT_BYTES, registerHookRoute } from './ingest-route.ts';
++import { TokenBucketRateLimiter } from './rate-limiter.ts';
++
++const HOST = '127.0.0.1:47800';
++const A = { id: '01J9ZQ4X7M3V6T8K2R5N0PWYBA', hookToken: 'a'.repeat(43) };
++const B = { id: '01J9ZQ4X7M3V6T8K2R5N0PWYBB', hookToken: 'b'.repeat(43) };
++
++function setup() {
++  const ingest = vi.fn<(sessionId: string, payload: unknown) => void>();
++  const app = Fastify();
++  registerHookRoute(app, {
++    sessions: new FakeSessionRegistry([A, B]),
++    rateLimiter: new TokenBucketRateLimiter({ capacity: 100, refillPerSecond: 100 }),
++    allowedHosts: new Set([HOST]),
++    ingest,
++  });
++  return { app, ingest };
++}
++
++function post(headers: Record<string, string>, payload: unknown = { hook_event_name: 'Stop' }) {
++  return { method: 'POST' as const, url: '/hooks', headers: { host: HOST, ...headers }, payload };
++}
++
++describe('POST /hooks', () => {
++  it('accepts a session posting with its own hook token', async () => {
++    const { app, ingest } = setup();
++    const res = await app.inject(
++      post({ 'x-micro-minds-session': A.id, 'x-micro-minds-hook-token': A.hookToken }),
++    );
++    expect(res.statusCode).toBe(204);
++    expect(ingest).toHaveBeenCalledWith(A.id, { hook_event_name: 'Stop' });
++  });
++
++  it.each([
++    { name: "session B's token for session A", session: A.id, token: B.hookToken, extra: {} },
++    { name: 'wrong token', session: A.id, token: 'x'.repeat(43), extra: {} },
++    { name: 'unknown session', session: '01J9ZQ4X7M3V6T8K2R5N0PWYBZ', token: A.hookToken, extra: {} },
++    { name: 'browser origin', session: A.id, token: A.hookToken, extra: { origin: 'http://evil.test' } },
++    { name: 'rebinding host', session: A.id, token: A.hookToken, extra: { host: 'evil.test:47800' } },
++  ])('rejects $name with a bare 404', async ({ session, token, extra }) => {
++    const { app, ingest } = setup();
++    const res = await app.inject(
++      post({ 'x-micro-minds-session': session, 'x-micro-minds-hook-token': token, ...extra }),
++    );
++    expect(res.statusCode).toBe(404);
++    expect(res.body).toBe('');
++    expect(ingest).not.toHaveBeenCalled();
++  });
++
++  it('rejects bodies over the limit', async () => {
++    const { app, ingest } = setup();
++    const res = await app.inject(
++      post(
++        { 'x-micro-minds-session': A.id, 'x-micro-minds-hook-token': A.hookToken },
++        { blob: 'x'.repeat(HOOK_BODY_LIMIT_BYTES) },
++      ),
++    );
++    expect(res.statusCode).toBe(413);
++    expect(ingest).not.toHaveBeenCalled();
++  });
++});
+diff --git a/apps/server/src/hooks/ingest-route.ts b/apps/server/src/hooks/ingest-route.ts
+new file mode 100644
+index 0000000..5551b1d
+--- /dev/null
++++ b/apps/server/src/hooks/ingest-route.ts
+@@ -0,0 +1,54 @@
++import { timingSafeEqual } from 'node:crypto';
++import type { FastifyInstance } from 'fastify';
++import { z } from 'zod';
++import type { SessionRegistry } from '../sessions/session-registry.ts';
++import type { RateLimiter } from './rate-limiter.ts';
++
++export const HOOK_BODY_LIMIT_BYTES = 256 * 1024;
++
++const HookHeaders = z.object({
++  host: z.string(),
++  'x-micro-minds-session': z.string().min(1).max(64),
++  'x-micro-minds-hook-token': z.string().min(1).max(256),
++});
++
++export interface HookRouteDeps {
++  sessions: SessionRegistry;
++  rateLimiter: RateLimiter;
++  /** Exact `127.0.0.1:<port>` values this server answers to (DNS-rebinding guard). */
++  allowedHosts: ReadonlySet<string>;
++  /** Normalizes, scrubs, caps and stores the payload; it receives `unknown`, never a cast. */
++  ingest: (sessionId: string, payload: unknown) => void;
++}
++
++function tokenEquals(a: string, b: string): boolean {
++  const left = Buffer.from(a, 'utf8');
++  const right = Buffer.from(b, 'utf8');
++  return left.length === right.length && timingSafeEqual(left, right);
++}
++
++/**
++ * `POST /hooks` (PLAN §9.2, §9.6). Only a session's own hook token can post events for that
++ * session. Every rejection is a bare 404 so callers learn nothing about which sessions exist.
++ */
++export function registerHookRoute(app: FastifyInstance, deps: HookRouteDeps): void {
++  app.post('/hooks', { bodyLimit: HOOK_BODY_LIMIT_BYTES }, async (request, reply) => {
++    // Hooks come from the CLI, never from a browser, so any Origin header is refused.
++    if (request.headers.origin !== undefined) return reply.code(404).send();
++    const headers = HookHeaders.safeParse(request.headers);
++    if (!headers.success || !deps.allowedHosts.has(headers.data.host)) {
++      return reply.code(404).send();
++    }
++    const sessionId = headers.data['x-micro-minds-session'];
++    const session = deps.sessions.get(sessionId);
++    if (
++      session === undefined ||
++      !tokenEquals(headers.data['x-micro-minds-hook-token'], session.hookToken)
++    ) {
++      return reply.code(404).send();
++    }
++    if (!deps.rateLimiter.tryAcquire(sessionId)) return reply.code(429).send();
++    deps.ingest(sessionId, request.body);
++    return reply.code(204).send();
++  });
++}
