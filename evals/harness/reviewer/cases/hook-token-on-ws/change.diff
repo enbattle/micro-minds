@@ -1,46 +1,80 @@
-diff --git a/apps/server/src/ws/authenticate.ts b/apps/server/src/ws/authenticate.ts
+diff --git a/apps/server/src/ws/authorize-upgrade.ts b/apps/server/src/ws/authorize-upgrade.ts
 new file mode 100644
-index 0000000..c2e2800
+index 0000000..1a0a123
 --- /dev/null
-+++ b/apps/server/src/ws/authenticate.ts
-@@ -0,0 +1,40 @@
++++ b/apps/server/src/ws/authorize-upgrade.ts
+@@ -0,0 +1,74 @@
 +import { timingSafeEqual } from 'node:crypto';
++import type { IncomingHttpHeaders } from 'node:http';
 +import { z } from 'zod';
 +
-+const AuthFrame = z.object({ t: z.literal('auth'), token: z.string().min(1).max(256) });
++const SESSION_COOKIE = 'mm_session';
 +
-+export interface TokenStore {
-+  readonly uiToken: string;
-+  /** Hook tokens of live sessions, keyed by our sessionId. */
-+  hookTokens(): Iterable<readonly [sessionId: string, token: string]>;
++const UpgradeHeaders = z.object({
++  host: z.string().max(256),
++  origin: z.string().max(256).optional(),
++  cookie: z.string().max(4096).optional(),
++  'x-micro-minds-session': z.string().max(64).optional(),
++  'x-micro-minds-hook-token': z.string().max(256).optional(),
++});
++
++export interface Credentials {
++  /** The HttpOnly UI session cookie issued by the bootstrap exchange (ADR 0026). */
++  readonly uiSession: string;
++  /** Hook token of a live session, or undefined if the session doesn't exist. */
++  hookToken(sessionId: string): string | undefined;
++}
++
++export interface AllowList {
++  readonly hosts: ReadonlySet<string>;
++  readonly origins: ReadonlySet<string>;
 +}
 +
 +export type Principal = { kind: 'ui' } | { kind: 'session'; sessionId: string };
 +
-+export type AuthResult =
-+  | { ok: true; principal: Principal }
-+  | { ok: false; reason: 'bad_frame' | 'bad_token' };
-+
-+function tokenEquals(a: string, b: string): boolean {
++function safeEquals(a: string, b: string): boolean {
 +  const left = Buffer.from(a, 'utf8');
 +  const right = Buffer.from(b, 'utf8');
 +  return left.length === right.length && timingSafeEqual(left, right);
 +}
 +
-+/**
-+ * Authenticates the first frame on a new WS connection. The browser UI sends the UI token.
-+ * Tooling running inside a session (it has MICROMINDS_HOOK_TOKEN in its env) may also attach
-+ * with its hook token, e.g. to stream its own PTY output.
-+ */
-+export function authenticateFirstFrame(frame: unknown, tokens: TokenStore): AuthResult {
-+  const parsed = AuthFrame.safeParse(frame);
-+  if (!parsed.success) return { ok: false, reason: 'bad_frame' };
-+  const { token } = parsed.data;
-+  if (tokenEquals(token, tokens.uiToken)) return { ok: true, principal: { kind: 'ui' } };
-+  for (const [sessionId, hookToken] of tokens.hookTokens()) {
-+    if (tokenEquals(token, hookToken)) {
-+      return { ok: true, principal: { kind: 'session', sessionId } };
-+    }
++function readCookie(header: string | undefined, name: string): string | undefined {
++  for (const part of header?.split(';') ?? []) {
++    const [key, ...rest] = part.trim().split('=');
++    if (key === name) return rest.join('=');
 +  }
-+  return { ok: false, reason: 'bad_token' };
++  return undefined;
++}
++
++/**
++ * Authorizes a WS upgrade before the handshake completes. The browser UI presents its session
++ * cookie. Tooling running inside a session (it has MICROMINDS_HOOK_TOKEN in its env) may also
++ * attach with its session id and hook token, e.g. to stream its own PTY output.
++ */
++export function authorizeUpgrade(
++  rawHeaders: IncomingHttpHeaders,
++  credentials: Credentials,
++  allow: AllowList,
++): Principal | null {
++  const parsed = UpgradeHeaders.safeParse(rawHeaders);
++  if (!parsed.success || !allow.hosts.has(parsed.data.host)) return null;
++  const headers = parsed.data;
++
++  const cookie = readCookie(headers.cookie, SESSION_COOKIE);
++  if (
++    headers.origin !== undefined &&
++    allow.origins.has(headers.origin) &&
++    cookie !== undefined &&
++    safeEquals(cookie, credentials.uiSession)
++  ) {
++    return { kind: 'ui' };
++  }
++
++  const sessionId = headers['x-micro-minds-session'];
++  const presented = headers['x-micro-minds-hook-token'];
++  if (sessionId === undefined || presented === undefined) return null;
++  const expected = credentials.hookToken(sessionId);
++  return expected !== undefined && safeEquals(presented, expected)
++    ? { kind: 'session', sessionId }
++    : null;
 +}

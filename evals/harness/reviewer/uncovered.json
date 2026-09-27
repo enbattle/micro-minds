@@ -102,7 +102,7 @@
   },
   "SEC-token-exposure": {
     "due": "2.8",
-    "why": "UI token transport over the WS"
+    "why": "UI session cookie and bootstrap-code handling (ADR 0026)"
   },
   "SEC-network-call": {
     "due": "2.8",
