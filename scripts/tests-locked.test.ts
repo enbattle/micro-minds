@@ -1150,6 +1150,293 @@ describe('addendum A2: late-revision', () => {
   );
 });
 
+describe('addendum D: lock commits can not be merges', () => {
+  const SIDE = 'side';
+
+  function currentBranch(repo: string): string {
+    return git(repo, 'rev-parse', '--abbrev-ref', 'HEAD');
+  }
+
+  /**
+   * Creates branch `side` at `from`, runs `onSide` there (it commits), switches back to the branch
+   * that was checked out before, and merges `side` with a real `git merge --no-ff`. Each message is
+   * one paragraph (`-m`), so a `Test-lock:` trailer can be given as the last one. Returns the
+   * merge commit's sha.
+   */
+  function mergeSide(
+    repo: string,
+    from: string,
+    onSide: (repo: string) => void,
+    ...messages: string[]
+  ): string {
+    const home = currentBranch(repo);
+    git(repo, 'checkout', '-q', '-b', SIDE, from);
+    onSide(repo);
+    git(repo, 'checkout', '-q', home);
+    git(repo, 'merge', '-q', '--no-ff', SIDE, ...messages.flatMap((m) => ['-m', m]));
+    const sha = git(repo, 'rev-parse', 'HEAD');
+    // The commit really is a merge: two parents.
+    expect(git(repo, 'rev-list', '--parents', '-n', '1', sha).split(' ')).toHaveLength(3);
+    return sha;
+  }
+
+  function mergeLocks(result: LockResult): LockResult['problems'] {
+    return result.problems.filter((p) => p.kind === 'merge-lock');
+  }
+
+  const lockMessage = (taskId: string, ...extraTrailers: string[]): string[] => [
+    `test: lock tests for ${taskId}`,
+    [`Test-lock: ${taskId}`, ...extraTrailers].join('\n'),
+  ];
+
+  it(
+    'D1: the original lock is a merge of a test-only side branch → exactly one merge-lock naming its short sha',
+    () => {
+      const repo = copyOf(baseTemplate);
+      const merge = mergeSide(
+        repo,
+        baseSha,
+        (r) => {
+          write(r, 'src/impl.test.ts', 'impl test\n');
+          commitAll(r, 'test: write tests on a side branch');
+        },
+        ...lockMessage(TASK),
+      );
+      const result = check(repo);
+      expect(kinds(result)).toEqual(['merge-lock']);
+      expect(result.ok).toBe(false);
+      const found = mergeLocks(result);
+      expect(found).toHaveLength(1);
+      expect(found[0]?.detail).toContain(merge.slice(0, 7));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'D1: the original lock is a merge whose side branch changed a non-test file → merge-lock reported',
+    () => {
+      const repo = copyOf(baseTemplate);
+      const merge = mergeSide(
+        repo,
+        baseSha,
+        (r) => {
+          write(r, 'src/impl.test.ts', 'impl test\n');
+          write(r, 'src/impl.ts', 'export const x = 2;\n');
+          commitAll(r, 'feat: tests and implementation together');
+        },
+        ...lockMessage(TASK),
+      );
+      const result = check(repo);
+      expect(result.ok).toBe(false);
+      const found = mergeLocks(result);
+      expect(found).toHaveLength(1);
+      expect(found[0]?.detail).toContain(merge.slice(0, 7));
+    },
+    TIMEOUT,
+  );
+
+  const revisionRows: Array<{ name: string; onSide: (repo: string) => void }> = [
+    {
+      name: 'a side branch that revised a locked test',
+      onSide: (r) => {
+        write(r, 'src/impl.test.ts', 'impl test, revised\n');
+        commitAll(r, 'test: revise on a side branch');
+      },
+    },
+    {
+      name: 'a side branch whose implementation commit weakened a locked test',
+      onSide: (r) => {
+        write(r, 'src/impl.ts', 'export const x = 2;\n');
+        write(r, 'src/impl.test.ts', 'weakened\n');
+        commitAll(r, 'feat: implement');
+      },
+    },
+    {
+      name: 'a side branch that added a new test',
+      onSide: (r) => {
+        write(r, 'src/extra.test.ts', 'extra\n');
+        commitAll(r, 'test: add on a side branch');
+      },
+    },
+  ];
+
+  it.each(revisionRows)(
+    'D1: the revision is a merge of $name → one merge-lock naming the revision, not the original',
+    ({ onSide }) => {
+      const repo = copyOf(lockedTemplate);
+      const revision = mergeSide(
+        repo,
+        lockSha,
+        onSide,
+        ...lockMessage(TASK, 'Revision-reason: the spec changed'),
+      );
+      const result = check(repo);
+      expect(result.ok).toBe(false);
+      const found = mergeLocks(result);
+      expect(found).toHaveLength(1);
+      expect(found[0]?.detail).toContain(revision.slice(0, 7));
+      expect(found[0]?.detail).not.toContain(lockSha.slice(0, 7));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'D1: both the original and the revision are merges → one merge-lock for each',
+    () => {
+      const repo = copyOf(baseTemplate);
+      const original = mergeSide(
+        repo,
+        baseSha,
+        (r) => {
+          write(r, 'src/impl.test.ts', 'impl test\n');
+          commitAll(r, 'test: write tests on a side branch');
+        },
+        ...lockMessage(TASK),
+      );
+      git(repo, 'branch', '-q', '-D', SIDE);
+      const revision = mergeSide(
+        repo,
+        original,
+        (r) => {
+          write(r, 'src/impl.test.ts', 'impl test, revised\n');
+          commitAll(r, 'test: revise on a side branch');
+        },
+        ...lockMessage(TASK, 'Revision-reason: the spec changed'),
+      );
+      const result = check(repo);
+      expect(kinds(result)).toContain('merge-lock');
+      const found = mergeLocks(result);
+      expect(found).toHaveLength(2);
+      expect(found.some((p) => p.detail.includes(original.slice(0, 7)))).toBe(true);
+      expect(found.some((p) => p.detail.includes(revision.slice(0, 7)))).toBe(true);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "D1: a merge carrying another task's Test-lock is not this task's merge-lock",
+    () => {
+      const repo = copyOf(lockedTemplate);
+      mergeSide(
+        repo,
+        lockSha,
+        (r) => {
+          write(r, 'src/other.test.ts', 'other\n');
+          commitAll(r, 'test: other task on a side branch');
+        },
+        ...lockMessage('2.14'),
+      );
+      const result = check(repo, TASK);
+      expect(kinds(result)).not.toContain('merge-lock');
+      expect(result.lockSha).toBe(lockSha);
+    },
+    TIMEOUT,
+  );
+
+  const nonLockRows: Array<{
+    name: string;
+    onSide: (repo: string) => void;
+    kind: Kind | null;
+    path: string;
+  }> = [
+    {
+      name: 'the base branch merged in with only non-test changes',
+      onSide: (r) => {
+        write(r, 'src/upstream.ts', 'export const u = 1;\n');
+        commitAll(r, 'feat: upstream work');
+      },
+      kind: null,
+      path: '',
+    },
+    {
+      name: 'the base branch merged in, bringing a new test',
+      onSide: (r) => {
+        write(r, 'src/upstream.test.ts', 'upstream\n');
+        commitAll(r, 'test: upstream test');
+      },
+      kind: 'added',
+      path: 'src/upstream.test.ts',
+    },
+    {
+      name: 'the base branch merged in, editing a test that predates the lock',
+      onSide: (r) => {
+        write(r, 'src/old.test.ts', 'changed upstream\n');
+        commitAll(r, 'test: upstream edit');
+      },
+      kind: 'modified',
+      path: 'src/old.test.ts',
+    },
+  ];
+
+  it.each(nonLockRows)(
+    'D2: after the lock, $name (a non-lock merge) → no merge-lock; existing rules give: $kind',
+    ({ onSide, kind, path: repoPath }) => {
+      const repo = copyOf(lockedTemplate);
+      mergeSide(repo, baseSha, onSide, `Merge branch '${SIDE}'`);
+      const result = check(repo);
+      expect(result.lockSha).toBe(lockSha);
+      if (kind === null) {
+        expectClean(result);
+      } else {
+        expect(kinds(result)).toEqual([kind]);
+        expectProblem(result, kind, repoPath);
+      }
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'D2: a non-lock merge before a single-parent lock → ok (guards existing behavior)',
+    () => {
+      const repo = copyOf(baseTemplate);
+      mergeSide(
+        repo,
+        baseSha,
+        (r) => {
+          write(r, 'src/prep.ts', 'export const p = 1;\n');
+          commitAll(r, 'refactor: prepare');
+        },
+        `Merge branch '${SIDE}'`,
+      );
+      write(repo, 'src/impl.test.ts', 'impl test\n');
+      const sha = lockCommit(repo, TASK);
+      const result = check(repo);
+      expectClean(result);
+      expect(result.lockSha).toBe(sha);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'D3: CLI, a merge lock is a lock violation → exit 1 and a LOCK merge-lock line with the short sha',
+    () => {
+      const repo = copyOf(baseTemplate);
+      const merge = mergeSide(
+        repo,
+        baseSha,
+        (r) => {
+          write(r, 'src/impl.test.ts', 'impl test\n');
+          commitAll(r, 'test: write tests on a side branch');
+        },
+        ...lockMessage(TASK),
+      );
+      const child = spawnSync(process.execPath, [SCRIPT, TASK, '--base', baseSha], {
+        cwd: repo,
+        env: gitEnv,
+        encoding: 'utf8',
+      });
+      expect(child.status).toBe(1);
+      const lines = `${child.stdout}\n${child.stderr}`.split(/\r?\n/);
+      expect(
+        lines.some(
+          (line) => line.startsWith('LOCK merge-lock: ') && line.includes(merge.slice(0, 7)),
+        ),
+      ).toBe(true);
+    },
+    TIMEOUT,
+  );
+});
+
 describe('CLI', () => {
   function run(
     cwd: string,
