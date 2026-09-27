@@ -3,6 +3,29 @@
 How this repo is set up for AI-assisted development with Claude Code. The harness is code: it
 is versioned, reviewed and tested like everything else (PLAN §11.1).
 
+## Principles
+
+Every change to the harness is judged against these, in order:
+
+1. **Procedures and checks beat prose.** When a rule matters, turn it into something that runs:
+   a skill that performs the steps, a hook, or a deterministic test or CI gate. A written
+   instruction is the fallback, not the goal. For example, the eval-coverage schedule is
+   enforced by a test that reads PLAN.md checkboxes, not by a reminder.
+2. **Add agents, skills and hooks only when evidence shows a need.** Evidence means an eval
+   result, a real miss, or repeated friction. A new specialized agent needs an eval showing that
+   the existing one falls short.
+3. **Prefer deterministic over model-judged.** Anything that can be checked without a model (the
+   guard, file layout, frontmatter, links, coverage) is checked in CI for free. Model-judged
+   evals are reserved for what only a model can judge, and they run with multiple trials.
+4. **Fail safe, never brick.** Safety layers deny by default where secrets are involved, but a
+   broken harness component must never lock up the agent (the guard allows malformed input and
+   logs it).
+5. **Keep always-loaded context small.** CLAUDE.md holds rules and pointers. Details live in
+   linked docs, and dynamic state (current task, overdue evals) is computed, not written down.
+6. **Record what we decide not to do.** Rejected and deferred practices go in
+   [deferred-practices.md](deferred-practices.md) with the trigger that would bring them back,
+   so a future session can find them instead of re-debating them.
+
 ## What's in it
 
 | Piece | Location | Purpose |

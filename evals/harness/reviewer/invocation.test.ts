@@ -44,6 +44,8 @@ describe('buildPrompt', () => {
   it('wraps the diff in a fence after the instructions', () => {
     const prompt = buildPrompt('diff --git a/x b/x\n+++ b/x\n');
     expect(prompt).toContain('may not exist on disk');
+    // Eval cases are excerpts; without this, missing helpers get flagged (clean-worktree-paths).
+    expect(prompt).toContain('relative modules it imports but does');
     expect(prompt).toContain('````diff\ndiff --git a/x b/x\n+++ b/x\n````');
   });
 

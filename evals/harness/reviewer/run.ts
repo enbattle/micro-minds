@@ -4,8 +4,10 @@
 //   npm run eval:harness                        all cases
 //   npm run eval:harness -- bind-all-interfaces one or more cases by name
 //   npm run eval:harness -- --dry-run           validate cases, print the command, spend nothing
+//   npm run eval:harness -- --trials 3          run every case 3 times (pass rule in trials.ts)
 //
-// Node built-ins only. Parsing and scoring live in score.ts (unit-tested); this file does I/O.
+// Node built-ins only. Parsing and scoring live in score.ts, trial aggregation in trials.ts and
+// version parsing in versions.ts (all unit-tested); this file does I/O.
 
 import { type ChildProcess, spawn } from 'node:child_process';
 import { accessSync, constants, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -26,15 +28,22 @@ import {
   checkUnifiedDiff,
   type Expected,
   extractRuleCatalog,
-  formatSummaryTable,
   parseClaudeJson,
   parseExpected,
   parseReviewOutput,
   type ReviewOutput,
   scoreCase,
   scoreErroredCase,
-  summarize,
 } from './score.ts';
+import {
+  formatBaselineRow,
+  formatTrialsTable,
+  MAX_TRIALS,
+  parseTrials,
+  requiredPasses,
+  summarizeTrials,
+} from './trials.ts';
+import { describeModels, distinctModels, parseClaudeVersion, UNKNOWN } from './versions.ts';
 
 const HERE = import.meta.dirname;
 const REPO_ROOT = path.resolve(HERE, '..', '..', '..');
@@ -42,6 +51,7 @@ const CASES_DIR = path.join(HERE, 'cases');
 const RESULTS_DIR = path.join(HERE, 'results');
 const AGENT_FILE = path.join(REPO_ROOT, '.claude', 'agents', 'reviewer.md');
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+const VERSION_TIMEOUT_MS = 30 * 1000;
 
 interface EvalCase {
   name: string;
@@ -54,6 +64,7 @@ interface CliOptions {
   caseNames: string[];
   invocation: InvocationOptions;
   timeoutMs: number;
+  trials: number;
 }
 
 interface CaseRun {
@@ -64,6 +75,8 @@ interface CaseRun {
   numTurns: number | null;
   durationMs: number;
   stderr: string;
+  /** Model ids from the result's `modelUsage`, costliest first; ['unknown'] if it had none. */
+  models: string[];
 }
 
 const USAGE = `Usage: npm run eval:harness -- [case ...] [options]
@@ -74,6 +87,8 @@ Options:
   --max-turns <n>        Turn cap per case (default ${DEFAULT_INVOCATION.maxTurns})
   --max-budget-usd <n>   Spend cap per case in USD (default ${DEFAULT_INVOCATION.maxBudgetUsd})
   --timeout-ms <n>       Kill a case after n ms (default ${DEFAULT_TIMEOUT_MS})
+  --trials <n>           Run each case n times, 1-${MAX_TRIALS} (default 1); a case passes
+                         when at least ceil(2n/3) of its trials pass
   -h, --help             Show this help`;
 
 function positiveNumber(raw: string | undefined, flag: string, fallback: number): number {
@@ -93,6 +108,7 @@ function parseCli(argv: readonly string[]): CliOptions | 'help' {
       'max-turns': { type: 'string' },
       'max-budget-usd': { type: 'string' },
       'timeout-ms': { type: 'string' },
+      trials: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -112,6 +128,7 @@ function parseCli(argv: readonly string[]): CliOptions | 'help' {
       model: values.model,
     },
     timeoutMs: positiveNumber(values['timeout-ms'], '--timeout-ms', DEFAULT_TIMEOUT_MS),
+    trials: parseTrials(values.trials),
   };
 }
 
@@ -247,7 +264,14 @@ async function runCase(
   timeoutMs: number,
 ): Promise<CaseRun> {
   const started = performance.now();
-  const base = { review: null, resultText: '', costUsd: null, numTurns: null, stderr: '' };
+  const base = {
+    review: null,
+    resultText: '',
+    costUsd: null,
+    numTurns: null,
+    stderr: '',
+    models: [UNKNOWN],
+  };
   const fail = (error: string, extra: Partial<CaseRun> = {}): CaseRun => ({
     ...base,
     ...extra,
@@ -271,7 +295,8 @@ async function runCase(
     return fail(`${claude.error} (exit ${String(output.code)})`, { stderr });
   }
   const { resultText, costUsd, numTurns, isError, subtype } = claude.value;
-  const extra = { resultText, costUsd, numTurns, stderr };
+  const models = claude.value.models.length > 0 ? claude.value.models : [UNKNOWN];
+  const extra = { resultText, costUsd, numTurns, stderr, models };
   if (isError) return fail(`claude run failed: ${subtype}`, extra);
 
   const review = parseReviewOutput(resultText);
@@ -282,6 +307,17 @@ async function runCase(
     score: scoreCase(evalCase.name, evalCase.expected, review.value, catalog),
     durationMs: performance.now() - started,
   };
+}
+
+/** `claude --version`, parsed; `unknown` if it fails. Spends no tokens. */
+async function claudeCodeVersion(binary: ResolvedBinary | undefined): Promise<string> {
+  if (!binary) return UNKNOWN;
+  try {
+    const output = await runClaude(binary, ['--version'], '', VERSION_TIMEOUT_MS);
+    return output.code === 0 && !output.timedOut ? parseClaudeVersion(output.stdout) : UNKNOWN;
+  } catch {
+    return UNKNOWN;
+  }
 }
 
 function timestamp(): string {
@@ -308,6 +344,8 @@ async function main(): Promise<number> {
   const cases = loadCases(catalog, cli.caseNames);
   const args = buildClaudeArgs(cli.invocation);
   const binary = resolveClaude();
+  const version = await claudeCodeVersion(binary);
+  const trialsNote = `${cli.trials} trial(s) per case, a case passes when >= ${requiredPasses(cli.trials)} pass`;
 
   if (cli.dryRun) {
     console.log(`Rule catalog: ${catalog.length} ids from ${path.relative(REPO_ROOT, AGENT_FILE)}`);
@@ -318,8 +356,9 @@ async function main(): Promise<number> {
       console.log(`  ${c.name.padEnd(28)} ${String(bytes).padStart(6)} B stdin  ${kind}`);
     }
     const shown = binary?.path ?? 'claude';
-    console.log(`\nclaude: ${binary ? binary.path : 'NOT FOUND on PATH'}`);
-    console.log(`Would run per case (cwd ${REPO_ROOT}), prompt + diff on stdin:`);
+    console.log(`\nclaude: ${binary ? binary.path : 'NOT FOUND on PATH'} (Claude Code ${version})`);
+    console.log(`Trials: ${trialsNote}; ${cases.length * cli.trials} session(s) in total`);
+    console.log(`Would run per trial (cwd ${REPO_ROOT}), prompt + diff on stdin:`);
     console.log(`  ${formatCommand(shown, args)}${binary?.needsShell ? '  [via shell]' : ''}`);
     return binary ? 0 : 1;
   }
@@ -331,41 +370,88 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  console.log(`Running ${cases.length} reviewer case(s) with ${binary.path}. This spends tokens.`);
-  const runs: CaseRun[] = [];
-  for (const [index, evalCase] of cases.entries()) {
-    process.stdout.write(`[${index + 1}/${cases.length}] ${evalCase.name} ... `);
-    const run = await runCase(evalCase, binary, args, catalog, cli.timeoutMs);
-    runs.push(run);
-    const cost = run.costUsd === null ? '' : ` $${run.costUsd.toFixed(3)}`;
-    const status = run.score.status === 'error' ? `ERROR: ${run.score.error ?? ''}` : 'done';
-    console.log(`${status} (${(run.durationMs / 1000).toFixed(0)}s${cost})`);
+  const total = cases.length * cli.trials;
+  console.log(
+    `Running ${cases.length} reviewer case(s) x ${cli.trials} trial(s) with Claude Code ` +
+      `${version} (${binary.path}); ${trialsNote}. This spends tokens.`,
+  );
+  const perCase: CaseRun[][] = [];
+  let done = 0;
+  for (const evalCase of cases) {
+    const trials: CaseRun[] = [];
+    for (let trial = 1; trial <= cli.trials; trial++) {
+      done += 1;
+      const label = cli.trials > 1 ? ` trial ${trial}/${cli.trials}` : '';
+      process.stdout.write(`[${done}/${total}] ${evalCase.name}${label} ... `);
+      const run = await runCase(evalCase, binary, args, catalog, cli.timeoutMs);
+      trials.push(run);
+      const cost = run.costUsd === null ? '' : ` $${run.costUsd.toFixed(3)}`;
+      const status = run.score.status === 'error' ? `ERROR: ${run.score.error ?? ''}` : 'done';
+      console.log(`${status} (${(run.durationMs / 1000).toFixed(0)}s${cost})`);
+    }
+    perCase.push(trials);
   }
 
-  const scores = runs.map((r) => r.score);
-  const summary = summarize(scores);
-  const totalCost = runs.reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
-  console.log(`\n${formatSummaryTable(scores, summary)}`);
+  const report = summarizeTrials(perCase.map((trials) => trials.map((r) => r.score)));
+  const allRuns = perCase.flat();
+  const totalCost = allRuns.reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
+  const models = distinctModels(allRuns.map((r) => r.models));
+  const modelFlag = cli.invocation.model;
+  console.log(
+    `\nClaude Code ${version}, reviewer model: ${describeModels(models, modelFlag)}, ` +
+      `trials: ${cli.trials}`,
+  );
+  console.log(formatTrialsTable(report));
+  const scores = allRuns.map((r) => r.score);
   const unknownIds = [...new Set(scores.flatMap((s) => s.unknownRuleIds))];
   if (unknownIds.length > 0) console.log(`Rule ids not in the catalog: ${unknownIds.join(', ')}`);
-  for (const reason of summary.reasons) console.log(`  - ${reason}`);
+  for (const reason of report.reasons) console.log(`  - ${reason}`);
 
   await mkdir(RESULTS_DIR, { recursive: true });
+  const createdAt = new Date();
   const resultFile = path.join(RESULTS_DIR, `${timestamp()}.json`);
-  const report = {
-    createdAt: new Date().toISOString(),
+  const results = {
+    createdAt: createdAt.toISOString(),
     claudeBinary: binary.path,
+    claudeCodeVersion: version,
+    models,
+    modelFlag: modelFlag ?? null,
+    trials: cli.trials,
+    requiredPasses: requiredPasses(cli.trials),
     args,
     timeoutMs: cli.timeoutMs,
     totalCostUsd: totalCost,
-    summary,
-    cases: runs,
+    passed: report.passed,
+    reasons: report.reasons,
+    summary: report.summary,
+    cases: report.cases.map((c, index) => ({
+      name: c.name,
+      clean: c.clean,
+      passes: c.passes,
+      trials: c.trials,
+      required: c.required,
+      errors: c.errors,
+      passed: c.passed,
+      flaky: c.flaky,
+      runs: perCase[index] ?? [],
+    })),
   };
-  await writeFile(resultFile, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  await writeFile(resultFile, `${JSON.stringify(results, null, 2)}\n`, 'utf8');
   console.log(
     `\nTotal cost ~$${totalCost.toFixed(2)}. Results: ${path.relative(REPO_ROOT, resultFile)}`,
   );
-  return summary.passed ? 0 : 1;
+  console.log('\nBaseline history row for evals/harness/README.md (edit the Notes as needed):');
+  console.log(
+    formatBaselineRow({
+      date: createdAt,
+      models,
+      modelFlag,
+      claudeCodeVersion: version,
+      totalCostUsd: totalCost,
+      report,
+    }),
+  );
+  return report.passed ? 0 : 1;
 }
 
 main().then(

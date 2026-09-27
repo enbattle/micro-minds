@@ -1,0 +1,92 @@
+# Deferred and rejected practices
+
+Practices we considered and chose **not** to adopt yet. Each entry says why, and which trigger
+should bring it back. This page exists so that a future session (human or agent) finds the
+earlier reasoning instead of re-debating it, and notices when a trigger has fired.
+
+**How to use it**
+
+- Before proposing a new practice, search this page. If it's here, check whether its trigger has
+  fired. If it hasn't, don't re-propose it without new evidence.
+- When a trigger fires, open an issue or plan task, write an ADR if the change touches PLAN §2,
+  and move the entry to "Adopted" at the bottom with a link.
+- When you decide against a practice, add an entry here in the same PR.
+
+Status values: **Deferred** (likely later, waiting on a trigger) or **Rejected** (not planned;
+reopen only with new evidence).
+
+---
+
+## Harness (AI developer experience)
+
+### `Stop` hook that blocks Claude from ending a session until checks have passed
+
+- **Status:** Deferred (decided 2026-09-27)
+- **What:** a `Stop` hook in `.claude/settings.json` that refuses to let Claude end its turn while
+  tracked files have changed and `npm run check` hasn't passed since the last edit.
+- **Why not now:**
+  - It's hard to get right. It needs state ("was check run after the last edit?"), it
+    misfires on exploratory, docs-only or mid-task turns, and a blocked Stop can loop.
+  - Being blocked repeatedly trains people to bypass hooks.
+  - The `/finish-task` skill (planned) gets most of the benefit with no friction.
+- **Revisit when:** the golden-task eval or real sessions show Claude finishing tasks without
+  running `npm run check`, the reviewer or the commit steps, even with `/finish-task` available.
+- **If adopted:** only block when tracked source files changed; record check runs through a
+  `PostToolUse` hook on the check command; have a clear escape hatch (docs-only changes, explicit
+  user override); deterministic tests in `evals/harness/`; an ADR.
+
+### Specialized reviewer agents (`security-reviewer`, `ui-reviewer`)
+
+- **Status:** Deferred
+- **Why not now:** one `reviewer` with a rule catalog is easier to evaluate and maintain. Splitting
+  it without evidence adds cost and overlapping findings.
+- **Revisit when:** reviewer eval recall for `SEC-*`/`HR3`/`HR4` or UI rules drops below the
+  threshold across trials, or real misses cluster in one area.
+
+### Claude Code sandbox mode for this repo
+
+- **Status:** Deferred
+- **Why not now:** we don't yet know what filesystem and network access agents need here (PTYs,
+  `git worktree`, local servers). Sandboxing too early would break Phase 1 spike work.
+- **Revisit when:** Phase 1 is done. Run a short spike and write an ADR.
+
+---
+
+## Engineering
+
+### Release tooling (changelog, semver tags, release-please)
+
+- **Status:** Deferred
+- **Why not now:** a local app distributed by `git clone`, with no releases yet.
+- **Revisit when:** Phase 8 (packaging), or the first time someone other than the owner runs it
+  from a tag.
+
+### OpenSSF Scorecard and SBOM generation
+
+- **Status:** Deferred
+- **Why not now:** pinned actions, Dependabot, CodeQL, secret scanning and audit already cover
+  most of the risk. Scorecard and SBOMs matter most for published artifacts.
+- **Revisit when:** we publish packages or binaries (Phase 8).
+
+### Mutation testing (Stryker) for the reducer and severity rules
+
+- **Status:** Deferred
+- **Why not now:** fixture replay plus property-based tests come first. Mutation testing is slow and
+  most useful once those suites are mature.
+- **Revisit when:** after Phase 3, if reducer bugs slip past the existing tests.
+
+### Separate PTY-owning process so agents outlive the server
+
+- **Status:** Deferred (PLAN D20)
+- **Why not now:** it roughly doubles server complexity. Lightweight resume covers restarts.
+- **Revisit when:** resume proves insufficient in daily use (for example, losing in-flight turns
+  on every dev restart is too painful).
+
+---
+
+## Adopted
+
+Entries move here, with a link to the ADR or PR, once a trigger fires and the practice is
+adopted.
+
+_None yet._
