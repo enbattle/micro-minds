@@ -18,10 +18,16 @@ export interface Finding {
   file: string;
   line: number | null;
   summary: string;
+  /** False for a problem the change didn't cause; such findings never block (ADR 0028). */
+  introduced: boolean;
 }
 
 export interface ReviewOutput {
   findings: Finding[];
+  /** What the reviewer tried in order to break the change; never empty (ADR 0028). */
+  probed: string[];
+  /** The change adds or alters an external surface, so the caller runs the security pass. */
+  externalSurface: boolean;
   verdict: Verdict;
 }
 
@@ -132,7 +138,23 @@ function parseFinding(value: unknown, index: number): Parsed<Finding> {
     return { ok: false, error: `${where}.line must be a non-negative integer or null` };
   }
   if (typeof summary !== 'string') return { ok: false, error: `${where}.summary must be a string` };
-  return { ok: true, value: { ruleId: ruleId.trim(), severity, file, line, summary } };
+  const { introduced = true } = value;
+  if (typeof introduced !== 'boolean') {
+    return { ok: false, error: `${where}.introduced must be a boolean when present` };
+  }
+  return { ok: true, value: { ruleId: ruleId.trim(), severity, file, line, summary, introduced } };
+}
+
+/** `probed`: a non-empty array of non-blank strings, kept as given. */
+function parseProbed(value: unknown): Parsed<string[]> {
+  const valid =
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((item): item is string => typeof item === 'string' && item.trim() !== '');
+  if (!valid) {
+    return { ok: false, error: '"probed" must be a non-empty array of non-blank strings' };
+  }
+  return { ok: true, value: [...value] };
 }
 
 /** Parses the reviewer's final ```json block into findings and a verdict. */
@@ -157,7 +179,16 @@ export function parseReviewOutput(text: string): Parsed<ReviewOutput> {
     if (!finding.ok) return finding;
     findings.push(finding.value);
   }
-  return { ok: true, value: { findings, verdict: data.verdict } };
+  const probed = parseProbed(data.probed);
+  if (!probed.ok) return probed;
+  const { externalSurface = false } = data;
+  if (typeof externalSurface !== 'boolean') {
+    return { ok: false, error: '"externalSurface" must be a boolean when present' };
+  }
+  return {
+    ok: true,
+    value: { findings, probed: probed.value, externalSurface, verdict: data.verdict },
+  };
 }
 
 /** Parses the single JSON object printed by `claude -p --output-format json`. */
