@@ -46,7 +46,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - Never call real provider CLIs in tests. Use the fake provider.
 - Windows is first-class: use `path` APIs, not string concatenation; no POSIX-only shell in scripts; resolve `.cmd`/`.exe` binaries.
 - Check current dependency versions when installing. Don't pin from memory.
-- Before finishing: `npm run check` green, a `reviewer` subagent pass on the diff, one conventional commit per task (`feat(server): …`), and the task's checkbox ticked in `docs/PLAN.md`.
+- Before finishing: `npm run check` green, a `reviewer` subagent pass on the diff (paste the `git diff` output into its prompt; the reviewer has no shell), one conventional commit per task (`feat(server): …`), and the task's checkbox ticked in `docs/PLAN.md`.
 - If the plan is wrong or ambiguous, stop and say so. Propose the plan edit rather than guessing.
 
 ## Code conventions

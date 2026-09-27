@@ -12,7 +12,7 @@ is versioned, reviewed and tested like everything else (PLAN §11.1).
 | Permissions | `.claude/settings.json` → `permissions` | Allow routine commands without prompts; deny dangerous or sensitive ones |
 | Guard hook | `.claude/hooks/guard.ts` (`PreToolUse`) | Second layer for credential and `.env` protection (see below) |
 | Format hook | `.claude/hooks/format.ts` (`PostToolUse`) | Runs Biome on every file Claude edits |
-| Subagents | `.claude/agents/` | `reviewer` (read-only diff review), `test-writer` |
+| Subagents | `.claude/agents/` | `reviewer` (read-only diff review; pass it the `git diff` output, since it has no shell), `test-writer` |
 | Skills | `.claude/skills/` | `phase-status`, `new-adapter`, `record-fixture` |
 | Harness evals | `evals/harness/` | Guard tests (run in CI) and reviewer evals (run manually; they spend tokens) |
 | Decisions | `docs/decisions/` | ADRs, including the harness policy in ADR 0024 |
