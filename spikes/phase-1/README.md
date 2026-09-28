@@ -35,5 +35,5 @@ by hand instead:
 - Raw captures and settings stay under `~/.micro-minds-dev/spike/`. Only scrubbed copies go into `fixtures/claude/` (task 1.7, `record-fixture` skill).
 - Never open the file a payload's `transcript_path` points to (hard rule 1).
 - Never edit `~/.claude/settings.json` (hard rule 2). Everything goes through `--settings`.
-- The user runs every recorded `claude` session. Headless `claude -p` runs need the user's OK, because recordings spend tokens.
+- Every recording spends the user's tokens, so no `claude` session starts, interactive or headless (`claude -p`), without the user's OK. With it, `drive.ts` records the sessions itself (PLAN Phase 1, "Before you start"); otherwise the user runs them by hand, as in "Recording a scenario" above.
 - The sink token changes on every start unless `SPIKE_SINK_TOKEN` is set. Files generated with `--literal-token` contain the token and must be regenerated after a restart.
