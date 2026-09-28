@@ -20,10 +20,6 @@
     "due": "1.8",
     "why": "General; Phase 1 spike code is the first place scope creep is likely"
   },
-  "HR5-hook-fail-open": {
-    "due": "1.4",
-    "why": "Relay latency and behavior are settled in task 1.4"
-  },
   "CONV-ids-timestamps": {
     "due": "2.1",
     "why": "Event schema with ULIDs and server timestamps"

@@ -1,6 +1,8 @@
 # 0020. Lightweight resume is in the MVP
 
-- Status: Accepted
+- Status: Accepted. Amended by [0029](0029-claude-hooks-over-native-http.md): Claude's resume id
+  comes from the first hook payload that carries `session_id`, not from `SessionStart`, which never
+  reaches an HTTP hook.
 - Date: 2026-09-26
 - Plan: D20 (PLAN §2)
 

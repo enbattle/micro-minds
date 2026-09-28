@@ -13,7 +13,7 @@ conflicts with casual usage, this page wins. PLAN.md is the source for the under
 | **Subagent** | An agent the root agent spawned inside the same session (Claude Code's Task/Agent tool). It has its own `agentId` and a `parentAgentId`, and gets a smaller character at a side desk. | A second session. Subagents share their parent's PTY and worktree. |
 | **Provider** | Which CLI runs the session: `claude`, `gemini`, `codex`, or `fake`. | A model. One provider can use several models (see usage). |
 | **Fake provider** | A scripted stand-in CLI that replays recorded hook payloads through the real pipeline. It's used for tests, CI and demo mode. | A mock inside the code. It's a real child process. |
-| **resumeId** | The provider's own session id, captured from the `SessionStart` hook payload and used for `claude --resume` (D20). | Our `sessionId`, which stays the same across resumes. |
+| **resumeId** | The provider's own session id, captured from the first hook payload that carries one (`session_id`; `SessionStart` never reaches an HTTP hook, D29) and used for `claude --resume` (D20). | Our `sessionId`, which stays the same across resumes. |
 | **Worktree** | The git worktree a session runs in, under `$MICROMINDS_HOME/worktrees/<repo-slug>/<sessionId>` on branch `micro-minds/<sessionId>` (D5, D12). | The user's main checkout, which sessions never touch. |
 
 ## State an agent is in

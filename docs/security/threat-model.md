@@ -151,13 +151,16 @@ end up printed verbatim.
 | I | Tokens or `raw` in logs; log injection via agent text | Never log tokens or `raw`; pino JSON escapes control characters | HR8; `SEC-token-exposure` | planned: task 2.7 |
 | T | Corrupt DB bricks startup | Move aside and start fresh | PLAN §5.6 | planned: task 2.11 |
 
-### Hook relay (only if task 1.4 picks it)
+### Hook relay (only for CLIs without native HTTP hooks)
+
+Task 1.4 chose native HTTP hooks for Claude (ADR 0029), so the relay is unused in the MVP. These
+rows apply if Phase 5 registers it for Gemini or Codex.
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
-| E | Relay output alters the CLI's decision | Exit 0, print nothing to stdout, 300–500 ms timeout | HR5, ADR 0009 | planned: task 2.10 |
-| I | Changed `MICROMINDS_URL` sends payloads and token off-box | Relay posts only to a loopback URL | HR5 | planned: task 2.10 |
-| D | Huge stdin payload | Cap bytes read; server body limit | PLAN §9.6 | planned: task 2.10 |
+| E | Relay output alters the CLI's decision | Exit 0, print nothing to stdout, 300–500 ms timeout | HR5, ADR 0009 | planned: Phase 5, if a CLI needs the relay (D29) |
+| I | Changed `MICROMINDS_URL` sends payloads and token off-box | Relay posts only to a loopback URL | HR5 | planned: Phase 5, if a CLI needs the relay (D29) |
+| D | Huge stdin payload | Cap bytes read; server body limit | PLAN §9.6 | planned: Phase 5, if a CLI needs the relay (D29) |
 
 ### Dev harness (Claude Code working on this repo)
 
@@ -190,4 +193,4 @@ end up printed verbatim.
 None right now. The six gaps found in the first pass (2026-09-27) each became an ADR or a
 PLAN acceptance item: UI authentication (ADR 0026, task 2.9), hook tokens kept out of settings
 files (1.3), safe worktree removal and git hardening (2.5), headless xterm query replies (2.6),
-and a loopback-only relay (2.10). New gaps go here with a `gap` status in the tables above.
+and a loopback-only relay (Phase 5, only if a CLI needs it; D29). New gaps go here with a `gap` status in the tables above.

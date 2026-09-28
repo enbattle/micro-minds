@@ -52,7 +52,7 @@ Core experience:
 | D17 | **Biome for lint and format, `tsc --noEmit` for types** | One fast tool, easy to call from a formatter hook. Add typescript-eslint later only if Biome misses a rule we need (for example floating promises). | Phase 2 review |
 | D18 | **npm workspaces** (not pnpm) | Simplicity: no extra tool to install. npm doesn't stop a package importing a dependency it never declared, so Biome's `noUndeclaredDependencies` rule, a committed lockfile, `npm ci` in CI and `engine-strict` cover that gap. | If install or hoisting problems appear |
 | D19 | **The app watches orchestration; it doesn't drive it** | Claude Code already routes subagent questions through the parent session. micro-minds visualizes that (hands on the right character, child→parent lines). Orchestrator behavior is steered with CLAUDE.md or agent prompts, not app code. Any routing done by the app is Phase 6/9. | Phase 9 |
-| D20 | **Lightweight resume is in the MVP** | Server restarts (including `npm run dev` watch restarts) kill every PTY. Capture Claude's `session_id` from the `SessionStart` hook payload (never from `~/.claude`) and relaunch with `claude --resume <id>` in the same worktree. | If a separate PTY-owning process is needed (agents outliving the server) |
+| D20 | **Lightweight resume is in the MVP** | Server restarts (including `npm run dev` watch restarts) kill every PTY. Capture Claude's `session_id` from the first hook payload that carries one (never from `~/.claude`; `SessionStart` doesn't reach HTTP hooks, D29) and relaunch with `claude --resume <id>` in the same worktree. | If a separate PTY-owning process is needed (agents outliving the server) |
 | D21 | **Graceful shutdown with a warning** | Stopping the server with live agents asks for confirmation, then interrupts each CLI, waits a grace period, and kills the process tree. Worktrees are kept and sessions stay resumable. Nothing is deleted automatically. | — |
 | D22 | **Mood is derived and pure** | `mood(agent)` is a pure selector in `packages/shared`, fully tested. The scene only renders it. Working and idle are always visibly different. | Phase 4b |
 | D23 | **Node runs TypeScript directly (native type stripping); only the web app has a build step** | Node 24 strips types natively, so there is no `tsc` emit, `tsx` or build output for server, shared or relay code. This requires `erasableSyntaxOnly` (no enums or namespaces) and `.ts` import extensions. `tsc --noEmit` (TypeScript 7) is used for type checking only. | If a published package ever needs emitted JS |
@@ -61,6 +61,7 @@ Core experience:
 | D26 | **The browser authenticates with a one-time bootstrap code exchanged for an HttpOnly session cookie** | An embedded UI token (v1 of D13) could be read by any local process with a plain `GET /`, including a prompt-injected agent, which could then drive every PTY. The code travels in a URL fragment to the launched browser only, is single-use with a 60 s TTL, and becomes an `HttpOnly`, `SameSite=Strict` cookie. Served HTML holds no secret. See ADR 0026. | A native wrapper (Phase 8) offers a better channel |
 | D27 | **Claude pushes task and phase branches; merges stay human** | Server-side rulesets already stop any push from changing `main`, so blocking all pushes only cost a hand-off per task. The merge is the one step where a human looks at the change (the reviewer is a model too), so Claude never merges. `/run-phase` runs a whole phase on one branch with one PR. See ADR 0027. | MVP complete (4a): per-task PRs become the default again; a second human reviewer; a bad push; a phase PR too large to review |
 | D28 | **Tests by a separate writer, locked; adversarial, independent review** | One context planning, testing, implementing and briefing its own reviewer grades itself. A fresh `test-writer` writes failing tests from the task text only; they are committed and locked (`scripts/tests-locked.ts`); the implementer never edits them. A fresh reviewer with artifact-only input tries to break the change, re-runs the checks, and shows what it probed; a security pass follows where the threat model or the reviewer says so. See ADR 0028. | Evals show planted defects slipping past the test writer or reviewer, or the lock blocking legitimate work |
+| D29 | **Claude's hook events arrive over native HTTP hooks, not the relay** | Measured on Windows (Phase 1): an HTTP hook costs about 1–4 ms, a synchronous relay about 110 ms per hook (a Node start), at least twice per tool call; HTTP hooks fail open and read the token from the environment. They never receive `SessionStart`, so `session.started` comes from the PTY spawn and the resume id from the first hook. The ingest checks size, session and token first (404/401, PLAN §9.6), then replies at once, and parses, stores and reduces after the reply; hooks use a 1 s timeout. See ADR 0029. | A Claude Code release adds `SessionStart` or `async` for HTTP hooks; Phase 5 for other CLIs |
 
 Each decision gets a short ADR in `docs/decisions/NNNN-title.md`. Record new decisions the same way.
 
@@ -252,12 +253,12 @@ The server holds the authoritative state. Clients receive a snapshot, then live 
 
 In order of preference, per provider:
 
-1. **Native HTTP hook**, if the CLI supports it (Claude Code likely does: `type: "http"`; **verify in Phase 1**). The CLI POSTs straight to `/hooks`, so there's no process spawned per tool call. Mark it async/non-blocking if the CLI supports that.
+1. **Native HTTP hook**, if the CLI supports it. **Claude Code does (D29):** `type: "http"`, verified in Phase 1. The CLI POSTs straight to `/hooks`, so there's no process spawned per tool call. HTTP hooks can't be async: the CLI waits for the reply, so `/hooks` checks size, session and token (§9.6), then answers at once, before parsing or storing the event, and each hook has a 1 s timeout. They fail open on a refused connection or an error status.
 2. **Relay executable** (`packages/hook-relay`), for providers that can only run a command:
    - Reads the JSON payload from stdin and `MICROMINDS_URL`, `MICROMINDS_SESSION_ID`, `MICROMINDS_HOOK_TOKEN` and `MICROMINDS_PROVIDER` from the environment.
    - POSTs to `/hooks` with a hard timeout of 300–500 ms.
    - **Always exits 0 and writes nothing to stdout.** If the env vars are missing, it exits immediately.
-   - Windows: ships a `.cmd` shim. Measure startup cost on Windows specifically, because Node's cold start is slower there.
+   - Windows: ships a `.cmd` shim. Measured in Phase 1: about 110 ms per run started directly, about 126 ms through `cmd /c` (a Node cold start). `async: true` (where the CLI allows it) removes that wait, but then events may arrive out of order, and receipt time is the event timestamp; Phase 5 decides per CLI whether ordering can be restored (for example from a provider sequence field) before using it.
 
 ### 5.2 Injecting hooks without touching global config
 
@@ -275,7 +276,7 @@ Don't write injected settings into the worktree. If a worktree file turns out to
 
 | Claude hook | → AgentEvent |
 |---|---|
-| `SessionStart` / `SessionEnd` | `session.started` / `session.ended` |
+| `SessionStart` / `SessionEnd` | `session.started` / `session.ended`. `SessionStart` never reaches an HTTP hook (D29), so `session.started` comes from the PTY spawn. |
 | `UserPromptSubmit` | `prompt.submitted` |
 | `PreToolUse` | `tool.started`. `AskUserQuestion` → `attention.question`. `Task`/`Agent` → category `delegate`. |
 | `PostToolUse` / `PostToolUseFailure` | `tool.finished` / `tool.failed` |
@@ -485,12 +486,12 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - **Settings.** Per-scenario settings files go in `~/.micro-minds-dev/spike/` and are passed with `claude --settings <file>`. Never edit `~/.claude/settings.json` (hard rule 2). The sink binds to `127.0.0.1` only.
 - **Spike code** lives in `spikes/phase-1/`. It must pass `npm run check` (Biome and `tsc` apply), but it has no coverage threshold and no tests-first requirement. Phase 2 reimplements what it needs properly, and the PR that closes Phase 2 deletes `spikes/`.
 - **With `/run-phase 1`** (D27), the run stops at each step above that the user runs or checks (the recordings in 1.2, the manual checks in 1.3 and 1.5), with the exact commands ready, and resumes when it's run again.
-- **Eval cases due in this phase:** `/start-task` lists them. Currently `HR5-hook-fail-open` is due with 1.4, and five general rules are due with 1.8. The phase gate (§14.6) applies when 1.8 is ticked.
+- **Eval cases due in this phase:** `/start-task` lists them. `HR5-hook-fail-open` was due with 1.4 (added); five general rules are due with 1.8. The phase gate (§14.6) applies when 1.8 is ticked.
 
 - [x] 1.1 A capture sink (in `spikes/phase-1/`) that appends raw payloads to `~/.micro-minds-dev/spike/captures/<scenario>.jsonl` (outside the repo; scrubbed into `fixtures/claude/` in 1.7), fed by an HTTP hook and by the relay.
 - [x] 1.2 Record scenarios: (a) Q&A, (b) read + edit, (c) failing shell command, (d) permission prompt, (e) AskUserQuestion, (f) subagent, (g) Ctrl-C, (h) process killed, (i) compaction if practical.
 - [x] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
-- [ ] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
+- [x] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
 - [ ] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
 - [ ] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
 - [ ] 1.7 Scrub the fixtures (paths, usernames, secrets) using the `record-fixture` skill.
@@ -511,7 +512,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [ ] 2.7 `HookIngest` + `EventStore` (SQLite, append-only, retention setting) + `Clock`. **Versioned, forward-only DB migrations**, each tested against a database created by the previous schema.
 - [ ] 2.8 WS server implementing §8, with a protocol version in `snapshot`, and cookie-authorized upgrades (D26). A client with a mismatched version gets a clear "reload" error instead of undefined behavior.
 - [ ] 2.9 Security tests: binding, both credential classes, the bootstrap flow (`GET /` holds no secret; codes are single-use and expire; WS and control routes reject a missing cookie, a wrong Origin or a wrong Host), origin/host, hook-token scope (session A's token can't post events for session B and can't open the WS), body limits, redaction.
-- [ ] 2.10 (Only if 1.4 chose the relay.) Production `hook-relay` with fail-open tests. It posts only to a loopback `MICROMINDS_URL`.
+- [x] 2.10 ~~(Only if 1.4 chose the relay.) Production `hook-relay` with fail-open tests. It posts only to a loopback `MICROMINDS_URL`.~~ **Not needed: 1.4 chose native HTTP hooks for Claude (D29).** Ticked so Phase 2 can complete; the relay work moves to Phase 5 (below), if Gemini or Codex needs it.
 - [ ] 2.11 App lifecycle (§5.6): single-instance lock, crash recovery and orphan detection, graceful shutdown with a hard deadline, sleep/wake gap handling. Integration-test each path with the fake provider.
 - [ ] 2.12 Resume (D20): capture `resumeId` from the adapter, relaunch into the same worktree and `sessionId`, and handle the edge cases (worktree gone, no id captured). The fake provider supports a `--resume` flag so this is tested in CI.
 - [ ] 2.13 `mood()` selector (§4.4), tests first, including "working vs idle is always distinct".
@@ -557,7 +558,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 | Phase | Scope | Rough complexity |
 |---|---|---|
 | 4b Art pass | Art direction, CC0 assets (`ASSETS.md`), rigged character with animations, customization, lighting | Medium–High (art-bound, not code-bound) |
-| 5 Multi-provider | Install Gemini and Codex; a protocol spike per provider (same as Phase 1); adapters passing conformance; terminal-only verdict where hooks fall short | Medium per provider (the adapter work is small; the spike is the risk) |
+| 5 Multi-provider | Install Gemini and Codex; a protocol spike per provider (same as Phase 1); adapters passing conformance; terminal-only verdict where hooks fall short; the production `hook-relay` with fail-open tests (formerly task 2.10) only if a CLI can't use native HTTP hooks (D29) | Medium per provider (the adapter work is small; the spike is the risk) |
 | 6 Depth | Full usage panel (history per day, model and repo, charts, optional soft budgets that turn the board amber, usage-limit warnings); session history + replay; resume polish beyond D20; opt-in blocking permission hook (own ADR, breaks D9); worktree diff/commit/PR | High overall; do the items independently |
 | 7 Structured chat mode | Agent SDK / stream-json, Gemini ACP, Codex app-server; chat UI. **Re-check provider terms first.** | High |
 | 8 Packaging | Electron shell, tray, native notifications | Medium |

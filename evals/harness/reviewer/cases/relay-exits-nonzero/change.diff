@@ -1,0 +1,65 @@
+diff --git a/packages/hook-relay/src/main.ts b/packages/hook-relay/src/main.ts
+index 76b8f05..014e8a3 100644
+--- a/packages/hook-relay/src/main.ts
++++ b/packages/hook-relay/src/main.ts
+@@ -1,4 +1,56 @@
+-// Hook relay entry point. Until Phase 1 decides whether a relay is needed at all (PLAN §5.1),
+-// this is a no-op that already honors the relay's invariants (CLAUDE.md rule 5):
+-// it always exits 0 and never writes to stdout, so it can never change agent behavior.
+-process.exitCode = 0;
++// Hook relay: reads a provider hook payload from stdin and forwards it to the local micro-minds
++// server (PLAN §5.1). Nothing on stdout, a hard 400 ms timeout, and an immediate return when the
++// session env is missing (the CLI was started outside micro-minds).
++
++import process from 'node:process';
++
++const TIMEOUT_MS = 400;
++
++function loopbackUrl(raw: string | undefined): URL | undefined {
++  if (raw === undefined) return undefined;
++  try {
++    const url = new URL(raw);
++    const loopback = url.hostname === '127.0.0.1' || url.hostname === 'localhost';
++    return url.protocol === 'http:' && loopback ? url : undefined;
++  } catch {
++    return undefined;
++  }
++}
++
++async function readStdin(): Promise<Buffer> {
++  const chunks: Buffer[] = [];
++  for await (const chunk of process.stdin) {
++    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
++  }
++  return Buffer.concat(chunks);
++}
++
++async function relay(): Promise<void> {
++  const base = loopbackUrl(process.env.MICROMINDS_URL);
++  const sessionId = process.env.MICROMINDS_SESSION_ID;
++  const token = process.env.MICROMINDS_HOOK_TOKEN;
++  const provider = process.env.MICROMINDS_PROVIDER;
++  if (base === undefined || !sessionId || !token || !provider) return;
++
++  const body = await readStdin();
++  const target = new URL('/hooks', base);
++  target.searchParams.set('session', sessionId);
++  target.searchParams.set('provider', provider);
++  const res = await fetch(target, {
++    method: 'POST',
++    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
++    body,
++    signal: AbortSignal.timeout(TIMEOUT_MS),
++  });
++  await res.arrayBuffer();
++  if (!res.ok) throw new Error(`ingest answered ${res.status}`);
++}
++
++try {
++  await relay();
++} catch (error) {
++  // Surface ingest problems instead of hiding them: a non-zero exit shows up in the CLI's hook
++  // log, which is the only place a user would notice that events stopped arriving.
++  process.stderr.write(`micro-minds relay: ${error instanceof Error ? error.message : String(error)}\n`);
++  process.exitCode = 1;
++}

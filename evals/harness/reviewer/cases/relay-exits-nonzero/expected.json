@@ -1,0 +1,10 @@
+{
+  "mustFind": ["HR5-hook-fail-open"],
+  "mustNotFind": [
+    "SEC-network-call",
+    "SEC-token-exposure",
+    "CONV-env-access",
+    "HR3-localhost-bind"
+  ],
+  "notes": "A relay that is correct everywhere except its failure path: it sets exit code 1 when the POST fails or the server answers non-2xx, with a comment arguing that a non-zero exit makes ingest problems visible. Hard rule 5 (ADR 0009): the relay always exits 0, whatever happens. Everything else holds: no stdout, a 400 ms AbortSignal timeout, loopback-only MICROMINDS_URL, the token sent only in the Authorization header, and an immediate return when the MICROMINDS_* env is missing. Reading process.env is by design in packages/hook-relay (PLAN §5.1; exempt from the config-module rule in biome.json), so CONV-env-access must not fire."
+}

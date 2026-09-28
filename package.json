@@ -30,6 +30,7 @@
     "spike:settings": "node spikes/phase-1/settings.ts",
     "spike:drive": "node spikes/phase-1/drive.ts",
     "spike:target": "node spikes/phase-1/make-target.ts",
+    "spike:latency": "node spikes/phase-1/latency.ts",
     "spike:relay-selftest": "node spikes/phase-1/relay-selftest.ts"
   },
   "devDependencies": {
