@@ -492,7 +492,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [x] 1.2 Record scenarios: (a) Q&A, (b) read + edit, (c) failing shell command, (d) permission prompt, (e) AskUserQuestion, (f) subagent, (g) Ctrl-C, (h) process killed, (i) compaction if practical.
 - [x] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
 - [x] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
-- [ ] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
+- [x] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
 - [ ] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
 - [ ] 1.7 Scrub the fixtures (paths, usernames, secrets) using the `record-fixture` skill.
 - [ ] 1.8 Usage telemetry spike (§5.7): enable OpenTelemetry export to a local capture endpoint and record the metric payloads (and the status-line JSON) for scenarios (a), (b) and (f). Confirm the metric names, units, cumulative vs delta, model and session attributes, whether subagents are distinguishable, and whether the user's own settings can override the env. Choose the channel and write an ADR.

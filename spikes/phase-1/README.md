@@ -12,6 +12,8 @@ Throwaway tooling for the Claude protocol spike ([PLAN §10, Phase 1](../../docs
 | `make-target.ts` | `npm run spike:target`: creates the scratch repo `~/micro-minds-spike-target` for recording by hand; `createTarget()` also builds the driver's per-scenario copies. |
 | `SCENARIOS.md` | What was recorded, the event sequences, and the findings for task 1.6. |
 | `latency.ts` | `npm run spike:latency [-- <runs>]`: task 1.4, the cost of a relay run (direct, via `cmd /c`, sink down) and of an HTTP hook's loopback POST. Every run is checked to have reached the sink. No `claude` runs. |
+| `pty-view.ts` | `npm run spike:pty-view [-- --shell]`: task 1.5, `claude` (or a shell) in node-pty in a throwaway worktree, shown in xterm.js on a local page behind a random token. |
+| `PTY-VIEW.md` | Task 1.5: login, colors, resize and alternate-screen results. |
 | `SETTINGS.md` | Task 1.3: settings merging, HTTP hooks, blocking and failure behaviour, and the token in the header (the `x-*` experiments, `npm run spike:drive -- --experiments`). |
 | `paths.ts` | Shared paths, port and scenario-name rules. |
 
