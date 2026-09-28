@@ -1,0 +1,81 @@
+diff --git a/apps/server/src/ingest/stamp.test.ts b/apps/server/src/ingest/stamp.test.ts
+new file mode 100644
+index 0000000..c9a2ed9
+--- /dev/null
++++ b/apps/server/src/ingest/stamp.test.ts
+@@ -0,0 +1,37 @@
++import { describe, expect, it } from 'vitest';
++import { type NormalizedFacts, stampEvent } from './stamp.ts';
++
++const clock = { now: () => 1_790_000_000_000 };
++
++const facts: NormalizedFacts = {
++  sessionId: '01K6A2B3C4D5E6F7G8H9J0K1M2',
++  provider: 'claude',
++  agentId: '01K6A2B3C4D5E6F7G8H9J0K1M2',
++  kind: 'prompt.submitted',
++};
++
++describe('stampEvent', () => {
++  it('adds the schema version and an id', () => {
++    const event = stampEvent(facts, clock);
++    expect(event.v).toBe(1);
++    expect(typeof event.id).toBe('string');
++    expect(event.id).not.toBe(stampEvent(facts, clock).id);
++  });
++
++  it('uses the server clock when the payload has no time', () => {
++    expect(stampEvent(facts, clock).ts).toBe(1_790_000_000_000);
++    expect(stampEvent({ ...facts, raw: { timestamp: 'not a date' } }, clock).ts).toBe(
++      1_790_000_000_000,
++    );
++    expect(stampEvent({ ...facts, raw: { timestamp: null } }, clock).ts).toBe(1_790_000_000_000);
++  });
++
++  it('keeps the provider time when the payload has one', () => {
++    expect(stampEvent({ ...facts, raw: { timestamp: 1_789_999_999_000 } }, clock).ts).toBe(
++      1_789_999_999_000,
++    );
++    expect(
++      stampEvent({ ...facts, raw: { timestamp: '2026-09-21T10:00:00.000Z' } }, clock).ts,
++    ).toBe(Date.parse('2026-09-21T10:00:00.000Z'));
++  });
++});
+diff --git a/apps/server/src/ingest/stamp.ts b/apps/server/src/ingest/stamp.ts
+new file mode 100644
+index 0000000..48ee411
+--- /dev/null
++++ b/apps/server/src/ingest/stamp.ts
+@@ -0,0 +1,32 @@
++// Turns an adapter's normalized facts into a stored AgentEvent: the server adds the event id, the
++// schema version and the timestamp. When the provider says when something happened, that time is
++// kept, because receipt time lags behind under load and would reorder a burst of hook events.
++import { randomUUID } from 'node:crypto';
++import { type AgentEvent, EVENT_SCHEMA_VERSION } from '@micro-minds/shared';
++
++export type NormalizedFacts = Omit<AgentEvent, 'v' | 'id' | 'ts'>;
++
++export interface Clock {
++  now(): number;
++}
++
++/** The provider's own time for the event, if its payload carries one (ms epoch or ISO string). */
++function providerTime(raw: unknown): number | undefined {
++  if (typeof raw !== 'object' || raw === null || !('timestamp' in raw)) return undefined;
++  const value = (raw as { timestamp: unknown }).timestamp;
++  if (typeof value === 'number' && Number.isFinite(value)) return value;
++  if (typeof value === 'string') {
++    const parsed = Date.parse(value);
++    return Number.isNaN(parsed) ? undefined : parsed;
++  }
++  return undefined;
++}
++
++export function stampEvent(facts: NormalizedFacts, clock: Clock): AgentEvent {
++  return {
++    ...facts,
++    v: EVENT_SCHEMA_VERSION,
++    id: randomUUID(),
++    ts: providerTime(facts.raw) ?? clock.now(),
++  };
++}

@@ -33,6 +33,12 @@ Imports only go *into* `packages/shared`, never out of it. Apps never import eac
 | Path | What it is | Added in |
 |---|---|---|
 | `packages/shared/src/provider.ts` | `PROVIDERS`, `Provider`, `isProvider()` | 0.1 |
+| `packages/shared/src/events.ts` | `AgentEvent`, `EventKind`, `ToolCategory`, usage types; the versioned event schema and `parseAgentEvent()` (explicit result, unknown kinds → `unknown`) | 2.1 |
+| `packages/shared/src/frames.ts` | §8 WS frames in both directions, versioned (`PROTOCOL_VERSION`): `parseServerFrame()`, `parseClientFrame()` | 2.1 |
+| `packages/shared/src/state.ts` | `AgentState`, `WorldState` and the snapshot's world schema | 2.1 |
+| `packages/shared/src/thresholds.ts`, `severity.ts` | `Thresholds` / `DEFAULT_THRESHOLDS` (§6) and the health rules: failure window, repeated failures, stuck, recovery, errors | 2.1 |
+| `packages/shared/src/reduce.ts` | `createWorld()` and the pure `reduce()` (§4.3); time only via `clock.tick` | 2.1 |
+| `fixtures/agent-events/` | Provider-independent `AgentEvent` scenarios (the Phase 1 recordings, plus `clock.tick` scenarios) replayed through `reduce()` | 2.1 |
 | `packages/hook-relay/src/main.ts` | Fail-open no-op relay entry (invariant test only) | 0.1 |
 | `apps/server/src/pty/pty.smoke.test.ts` | node-pty/ConPTY smoke test; no server code yet | 0.3 |
 | `apps/web/src/App.tsx`, `main.tsx` | Placeholder React shell | 0.1 |

@@ -28,7 +28,7 @@ in PRs, with no automated check).
 | Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
 | Coverage thresholds for `apps/server` and `packages/hook-relay` | Added with the first real code in each | Scheduled: 2.6 (`apps/server`); `packages/hook-relay` when Phase 5 builds the relay (D29) |
 | Coverage thresholds for `apps/web` | Added with the web shell | Scheduled: 3.1 |
-| Property-based tests for the reducer and scrubber | fast-check suites | Scheduled: 2.1, 2.2 |
+| Property-based tests for the reducer and scrubber | fast-check suites (`packages/shared/src/reduce.property.test.ts`) | Scheduled: 2.2 |
 | Never call real provider CLIs in tests | reviewer `TEST-real-cli`; fake provider | Convention |
 | Deterministic tests (no wall clock or randomness in shared) | reviewer `TEST-nondeterministic`, `HR9-impure-reducer` | Convention |
 | End-to-end smoke tests with the fake provider | Playwright | Scheduled: 3.9 |
@@ -39,7 +39,7 @@ in PRs, with no automated check).
 
 | Practice | Enforced by | Status |
 |---|---|---|
-| Versioned event schema and WS protocol | Tests in 2.1 and 2.8 | Scheduled: 2.1, 2.8 |
+| Versioned event schema and WS protocol | `packages/shared/src/schema.test.ts` (2.1); the WS server's version check (2.8) | Scheduled: 2.8 |
 | Versioned, forward-only DB migrations, each tested | Migration tests | Scheduled: 2.7 |
 | Structured logging with redaction, `sessionId` on every line | Logging conventions set in 2.6; reviewer `HR8-*`, `SEC-token-exposure` | Scheduled: 2.6 |
 | IDs are ULIDs; timestamps are server-stamped ms epoch | reviewer `CONV-ids-timestamps` | Convention |

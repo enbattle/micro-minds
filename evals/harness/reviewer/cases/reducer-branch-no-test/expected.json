@@ -1,0 +1,5 @@
+{
+  "mustFind": ["TEST-missing"],
+  "mustNotFind": ["ARCH-shared-io", "CONV-erasable-syntax", "ARCH-provider-leak"],
+  "notes": "reduce() gains a new branch: context.compacting sets activity 'thinking' (unless a tool is running) and a 'compacting' label, which the next prompt clears. It's a behavior change in packages/shared with a comment explaining it, and the diff has no test hunk: nothing covers the new activity, the kept tool activity, or the label clearing (CLAUDE.md: tests first for packages/shared; a new reducer branch with no test is the rule's own example). Everything else holds: the reducer stays pure (no clock, no I/O), it uses the provider-neutral EventKind, and there is no enum or other non-erasable syntax."
+}

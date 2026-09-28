@@ -1,0 +1,60 @@
+diff --git a/packages/shared/src/stuck-boundary.test.ts b/packages/shared/src/stuck-boundary.test.ts
+new file mode 100644
+index 0000000..9056b9a
+--- /dev/null
++++ b/packages/shared/src/stuck-boundary.test.ts
+@@ -0,0 +1,54 @@
++// The stuck rule's boundary (PLAN §6): "no events for more than 10 min" is exclusive, so an agent
++// quiet for exactly the threshold is still ok, and one millisecond more is a warning.
++import { describe, expect, it } from 'vitest';
++import type { AgentEvent, EventKind } from './index.ts';
++import { createWorld, DEFAULT_THRESHOLDS, EVENT_SCHEMA_VERSION, reduce } from './index.ts';
++
++const SESSION = '01K6A2B3C4D5E6F7G8H9J0K1M2';
++
++/** A fresh ULID-shaped id per event, so no two events share one. */
++function id(): string {
++  return `01K6T${String(Math.floor(Math.random() * 1e21)).padStart(21, '0')}`;
++}
++
++function ev(kind: EventKind, ts: number): AgentEvent {
++  return {
++    v: EVENT_SCHEMA_VERSION,
++    id: id(),
++    ts,
++    sessionId: SESSION,
++    provider: 'claude',
++    agentId: SESSION,
++    kind,
++  };
++}
++
++function healthAfter(events: AgentEvent[]): string {
++  let world = createWorld();
++  for (const event of events) world = reduce(world, event, DEFAULT_THRESHOLDS);
++  return world.agents[SESSION]?.health ?? 'missing';
++}
++
++describe('stuck boundary', () => {
++  it('a thinking agent quiet for exactly the threshold is still ok', () => {
++    const start = Date.now();
++    expect(
++      healthAfter([
++        ev('session.started', start),
++        ev('prompt.submitted', start),
++        ev('clock.tick', Date.now() + DEFAULT_THRESHOLDS.stuckAfterMs),
++      ]),
++    ).toBe('ok');
++  });
++
++  it('one millisecond past the threshold is a warning', () => {
++    const start = Date.now();
++    expect(
++      healthAfter([
++        ev('session.started', start),
++        ev('prompt.submitted', start),
++        ev('clock.tick', start + DEFAULT_THRESHOLDS.stuckAfterMs + 1),
++      ]),
++    ).toBe('warning');
++  });
++});

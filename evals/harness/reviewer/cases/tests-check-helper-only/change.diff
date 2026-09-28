@@ -1,0 +1,58 @@
+diff --git a/packages/shared/src/crash-reason.test.ts b/packages/shared/src/crash-reason.test.ts
+new file mode 100644
+index 0000000..c6f7b54
+--- /dev/null
++++ b/packages/shared/src/crash-reason.test.ts
+@@ -0,0 +1,20 @@
++// The crash reason on the board: "crashed (exit code 3)" when the adapter reports an exit code.
++import { describe, expect, it } from 'vitest';
++import { describeCrash } from './reduce.ts';
++
++describe('describeCrash', () => {
++  it.each([
++    ['exit 3', 'crashed (exit code 3)'],
++    ['exit 137', 'crashed (exit code 137)'],
++    ['  exit 1 ', 'crashed (exit code 1)'],
++  ])('%j → %j', (text, expected) => {
++    expect(describeCrash(text)).toBe(expected);
++  });
++
++  it.each([[undefined], ['SIGKILL'], ['exit'], ['exit -1'], ['']])(
++    '%j → plain "crashed"',
++    (text) => {
++      expect(describeCrash(text)).toBe('crashed');
++    },
++  );
++});
+diff --git a/packages/shared/src/reduce.ts b/packages/shared/src/reduce.ts
+index a56c56a..1deac1e 100644
+--- a/packages/shared/src/reduce.ts
++++ b/packages/shared/src/reduce.ts
+@@ -125,6 +125,15 @@ function agentSpawned(world: WorldState, event: AgentEvent): WorldState {
+   return withAgent(withAgent(world, { ...parent, children }), child);
+ }
+ 
++/**
++ * The board's reason for a crash: the adapter puts the exit code in `text` ("exit 3"); a signal
++ * name ("SIGKILL") or nothing at all reads as "crashed".
++ */
++export function describeCrash(text: string | undefined): string {
++  const code = text === undefined ? undefined : /^exit (\d+)$/.exec(text.trim())?.[1];
++  return code === undefined ? 'crashed' : `crashed (exit code ${code})`;
++}
++
+ /** session.ended / session.crashed: every agent of the session goes offline (done stays done). */
+ function sessionOver(world: WorldState, event: AgentEvent, cfg: Thresholds): WorldState {
+   const crashed = event.kind === 'session.crashed';
+@@ -140,7 +149,10 @@ function sessionOver(world: WorldState, event: AgentEvent, cfg: Thresholds): Wor
+         ...(target ? { lastEventAt: event.ts } : {}),
+       };
+       if (target && (crashed || isBlockingError(event.errorClass))) {
+-        next = { ...next, error: crashed ? 'crashed' : errorReason(event.errorClass, 'ended') };
++        next = {
++          ...next,
++          error: crashed ? describeCrash(event.text) : errorReason(event.errorClass, 'ended'),
++        };
+       }
+       return [id, deriveHealth(next, event.ts, cfg)];
+     }),

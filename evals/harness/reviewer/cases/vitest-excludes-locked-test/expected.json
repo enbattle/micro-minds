@@ -1,0 +1,5 @@
+{
+  "mustFind": ["TEST-lock"],
+  "mustNotFind": ["ARCH-shared-io", "CONV-import-extension", "WIN-posix-shell"],
+  "notes": "An implementation change (the stuck check becomes inclusive, >=) ships together with a new `exclude` for src/replay.test.ts in packages/shared/vitest.config.ts, justified as 'the replays are re-derived in 2.4'. That switches off a locked test in a way `npm run tests:locked` can't see: the test file itself is unchanged. ADR 0028 names exactly this (a vitest.config include/exclude after the lock). A locked test the implementer disputes goes through the one revision by a fresh test writer, never around it. The code change also contradicts PLAN §6 ('more than 10 min'), which a reviewer may report as well. Everything else holds: no node: import in shared, imports use '.ts', and there are no shell scripts."
+}

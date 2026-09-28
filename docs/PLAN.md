@@ -107,7 +107,8 @@ micro-minds/
     server/                     ← Fastify + ws + node-pty + better-sqlite3
       src/providers/{claude,fake}/   ← gemini/, codex/ in Phase 5
     web/                        ← Vite + React + R3F + drei + zustand + xterm.js
-  fixtures/{claude,fake}/*.jsonl
+  fixtures/{claude,fake}/*.jsonl  ← recorded provider payloads
+  fixtures/agent-events/*.jsonl   ← provider-independent AgentEvent scenarios for reduce()
   evals/harness/                ← evals for the AI dev harness (§11.1)
   .claude/                      ← settings, agents, skills, hooks
   .github/workflows/ci.yml
@@ -505,7 +506,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 **Goal:** a headless server that starts Claude agents in worktrees and produces a correct live world state.
 
-- [ ] 2.1 `packages/shared`: zod schemas, `ToolCategory`, `Thresholds`, `severity.ts`, `reduce()`. **Tests first**, replaying fixtures, including `clock.tick` scenarios. Stored events and WS frames carry a schema version (`v`), and unknown versions are handled explicitly. **Property-based tests** (fast-check) for the reducer: it never throws on any event sequence, usage totals only grow, and replaying the same events gives the same state.
+- [x] 2.1 `packages/shared`: zod schemas, `ToolCategory`, `Thresholds`, `severity.ts`, `reduce()`. **Tests first**, replaying fixtures, including `clock.tick` scenarios. Stored events and WS frames carry a schema version (`v`), and unknown versions are handled explicitly. **Property-based tests** (fast-check) for the reducer: it never throws on any event sequence, usage totals only grow, and replaying the same events gives the same state.
 - [ ] 2.2 The scrubber, with its own test corpus plus **property-based tests**: no generated secret of a known shape survives scrubbing, and ordinary text is left alone.
 - [ ] 2.3 `ProviderAdapter` interface + `ProviderRegistry` (binary resolution, injection strategy, tool-category map), plus a **conformance test suite** that every adapter must pass.
 - [ ] 2.4 Claude adapter and fake provider, both passing conformance. The fake provider replays fixtures through `/hooks` and echoes PTY input.

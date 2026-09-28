@@ -1,0 +1,5 @@
+{
+  "mustFind": ["CONV-ids-timestamps"],
+  "mustNotFind": ["ARCH-shared-io", "CONV-env-access", "CONV-import-extension"],
+  "notes": "Server-side stamping of normalized events with two planted breaks of the same rule: event ids from crypto.randomUUID() instead of ULIDs, and `ts` taken from the provider payload's timestamp when present, justified as preserving order under load. CLAUDE.md: IDs are ULIDs; timestamps are ms epoch stamped by the server on receipt, never taken from the provider (the provider's clock can be wrong or forged, and staleness and failure windows depend on server time). Everything else holds: the file is server code (not packages/shared, so node:crypto there is not ARCH-shared-io), no process.env, relative imports use '.ts', and the clock is injected."
+}

@@ -1,21 +1,5 @@
 {
   "$comment": "Reviewer rules without a planted eval case yet, each due with the PLAN task that first writes the code it governs. CI fails if a due task is ticked while its rule is still listed (coverage.test.ts). Remove an entry in the same PR that adds its case. See evals/harness/README.md#growing-the-harness.",
-  "CONV-ids-timestamps": {
-    "due": "2.1",
-    "why": "Event schema with ULIDs and server timestamps"
-  },
-  "ARCH-shared-io": {
-    "due": "2.1",
-    "why": "First real code in packages/shared (reduce, severity)"
-  },
-  "TEST-missing": {
-    "due": "2.1",
-    "why": "Tests-first work starts with the reducer"
-  },
-  "TEST-nondeterministic": {
-    "due": "2.1",
-    "why": "Reducer and clock.tick tests are the first time-sensitive tests"
-  },
   "HR8-unscrubbed-output": {
     "due": "2.2",
     "why": "The scrubber"
@@ -119,13 +103,5 @@
   "SEC-terminal-escape": {
     "due": "3.3",
     "why": "Terminal drawer: xterm.js addons, link handling and clipboard"
-  },
-  "TEST-lock": {
-    "due": "2.1",
-    "why": "First task whose tests the test writer locks (ADR 0028)"
-  },
-  "TEST-criteria": {
-    "due": "2.1",
-    "why": "First task whose acceptance clauses are mapped to locked tests (ADR 0028)"
   }
 }
