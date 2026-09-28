@@ -22,6 +22,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { type IPty, spawn } from 'node-pty';
 import { resolveOnPath } from '../../evals/harness/reviewer/resolve-bin.ts';
 import { createTarget } from './make-target.ts';
@@ -35,7 +36,7 @@ import {
   sinkPort,
 } from './paths.ts';
 import { buildSettings } from './settings.ts';
-import { type CaptureEvent, PROBE_CHANNEL, startSink } from './sink.ts';
+import { type CaptureEvent, PROBE_CHANNEL, startSink, type TelemetryEvent } from './sink.ts';
 
 const SECOND = 1000;
 
@@ -65,6 +66,13 @@ interface Scenario {
   settings?: (port: number) => Record<string, unknown>;
   /** Start claude without --settings (a control run: only the user's own hooks apply). */
   noSettings?: boolean;
+  /**
+   * Task 1.8: export OpenTelemetry to the sink, configured in the process env (`env`) or in our
+   * --settings `env` block (`settings`).
+   */
+  telemetry?: 'env' | 'settings' | 'split' | 'adr';
+  /** Task 1.8: record the status-line JSON with statusline.ts (in our --settings only). */
+  statusLine?: boolean;
   /** Task 1.3 experiments: a project-level .claude/settings.json in the scratch repo. */
   projectSettings?: (port: number) => Record<string, unknown>;
   /** Task 1.3 experiments: how the sink replies on the probe channel. */
@@ -224,6 +232,100 @@ const EXPERIMENTS: Scenario[] = [
   },
 ];
 
+// ---- Task 1.8: usage telemetry (PLAN §5.7). Hooks as in 1.2, plus OpenTelemetry and the ----
+// status line. A short pause before quitting lets the last export interval pass.
+
+const QA_PROMPT = "In one sentence, what is a pure function? Don't use any tools.";
+const FLUSH: Step = { kind: 'sleep', ms: 6 * SECOND };
+
+/**
+ * The env entry the user adds to their own user settings for the t-user-* runs (the driver never
+ * reads or writes that file). Without CLAUDE_CODE_ENABLE_TELEMETRY it does nothing in their other
+ * sessions; with it, it points exports at this sink under the `user` channel.
+ */
+function userTelemetryEnv(port: number): Record<string, string> {
+  return { OTEL_EXPORTER_OTLP_ENDPOINT: `http://${SINK_HOST}:${port}/otel/t-user/user` };
+}
+
+const TELEMETRY: Scenario[] = [
+  {
+    name: 't-qa',
+    channel: 'http',
+    telemetry: 'env',
+    statusLine: true,
+    steps: [...turn(QA_PROMPT), FLUSH, { kind: 'exit' }],
+  },
+  {
+    name: 't-read-edit',
+    channel: 'http',
+    telemetry: 'env',
+    statusLine: true,
+    steps: [
+      ...turn('Read src/math.js, then add a subtract(a, b) function after add().'),
+      FLUSH,
+      { kind: 'exit' },
+    ],
+  },
+  {
+    name: 't-subagent',
+    channel: 'http',
+    telemetry: 'env',
+    statusLine: true,
+    steps: [
+      {
+        kind: 'prompt',
+        text: 'Use the Agent tool to start a subagent that lists the files in this repository and describes each in one line, then give me its answer.',
+      },
+      { kind: 'wait', event: 'SubagentStop', timeoutMs: 300 * SECOND },
+      { kind: 'wait', event: 'Stop', timeoutMs: 180 * SECOND, optional: true },
+      FLUSH,
+      { kind: 'exit' },
+    ],
+  },
+  {
+    // Is our --settings `env` block honored for OpenTelemetry? (The docs say repository settings
+    // are ignored for it.) Nothing in the process env.
+    name: 't-settings-env',
+    channel: 'http',
+    telemetry: 'settings',
+    steps: [...turn(QA_PROMPT), FLUSH, { kind: 'exit' }],
+  },
+  {
+    // ADR 0030's layout: endpoint and switches in --settings `env`, the token header only in the
+    // process env. Do the two sources combine, so the settings file never holds the token?
+    name: 't-split',
+    channel: 'http',
+    telemetry: 'split',
+    steps: [...turn(QA_PROMPT), FLUSH, { kind: 'exit' }],
+  },
+  {
+    // ADR 0030's exact configuration (per-signal metrics variables, logs off, delta, 5 s), with a
+    // tool call so more than one export interval passes.
+    name: 't-adr',
+    channel: 'http',
+    telemetry: 'adr',
+    steps: [
+      ...turn('Read src/math.js, then add a subtract(a, b) function after add().'),
+      { kind: 'sleep', ms: 8 * SECOND },
+      { kind: 'exit' },
+    ],
+  },
+  {
+    // With userTelemetryEnv in the user's settings: does it override our process env?
+    name: 't-user-env',
+    channel: 'http',
+    telemetry: 'env',
+    steps: [...turn(QA_PROMPT), FLUSH, { kind: 'exit' }],
+  },
+  {
+    // The same, with ours in the --settings `env` block instead.
+    name: 't-user-settings',
+    channel: 'http',
+    telemetry: 'settings',
+    steps: [...turn(QA_PROMPT), FLUSH, { kind: 'exit' }],
+  },
+];
+
 export const SCENARIOS: Scenario[] = [
   {
     name: 'a-qa',
@@ -363,19 +465,60 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Environment for the recorded session: the user's own, minus this session's Claude Code vars. */
-function childEnv(url: string, token: string): Record<string, string> {
+/**
+ * Environment for the recorded session: the user's own, minus this session's Claude Code vars and
+ * any inherited OpenTelemetry config (so only the scenario's own telemetry settings apply).
+ */
+function childEnv(
+  url: string,
+  token: string,
+  extra: Record<string, string>,
+): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
     if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE_') || key === 'CLAUDE_PROJECT_DIR') {
       continue;
     }
+    if (key.toUpperCase().startsWith('OTEL_')) continue;
     env[key] = value;
   }
   env.MICROMINDS_URL = url;
   env.MICROMINDS_HOOK_TOKEN = token;
-  return env;
+  return { ...env, ...extra };
+}
+
+/**
+ * Task 1.8: OpenTelemetry to the sink as OTLP/HTTP JSON (PLAN §5.7), with short export intervals
+ * so a short session flushes. The temporality is left at its default, which is one of the facts
+ * recorded. Prompt, response and tool-detail logging stay off (their defaults), and account ids
+ * are switched off as micro-minds would.
+ */
+function telemetryEnv(
+  port: number,
+  scenario: string,
+  channel: 'env' | 'settings' | 'user',
+  token: string,
+): Record<string, string> {
+  return {
+    CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+    OTEL_METRICS_EXPORTER: 'otlp',
+    OTEL_LOGS_EXPORTER: 'otlp',
+    OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+    OTEL_EXPORTER_OTLP_ENDPOINT: `http://${SINK_HOST}:${port}/otel/${scenario}/${channel}`,
+    OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}`,
+    OTEL_METRIC_EXPORT_INTERVAL: '2000',
+    OTEL_LOGS_EXPORT_INTERVAL: '1000',
+    OTEL_METRICS_INCLUDE_ACCOUNT_UUID: 'false',
+  };
+}
+
+/** Task 1.8: our status-line command, which records its stdin (statusline.ts). */
+function statusLineSetting(scenario: string): Record<string, unknown> {
+  const script = fileURLToPath(new URL('./statusline.ts', import.meta.url));
+  // Forward slashes and double quotes work in both the POSIX shell and cmd.exe.
+  const quote = (p: string) => `"${p.split(path.sep).join('/')}"`;
+  return { type: 'command', command: `${quote(process.execPath)} ${quote(script)} ${scenario}` };
 }
 
 /**
@@ -390,9 +533,12 @@ function freshTarget(scenario: string): string {
 }
 
 function keepOldCapture(scenario: string): void {
-  const file = captureFile(CAPTURES_DIR, scenario);
-  if (existsSync(file) && statSync(file).size > 0) {
-    renameSync(file, `${file}.${Date.now()}.old`);
+  // The hook capture, and the task 1.8 telemetry and status-line captures of the same scenario.
+  for (const name of [scenario, `otel-${scenario}`, `statusline-${scenario}`]) {
+    const file = captureFile(CAPTURES_DIR, name);
+    if (existsSync(file) && statSync(file).size > 0) {
+      renameSync(file, `${file}.${Date.now()}.old`);
+    }
   }
 }
 
@@ -444,17 +590,51 @@ async function runScenario(
   // different SPIKE_SINK_PORT can't send the hooks nowhere.
   mkdirSync(SETTINGS_DIR, { recursive: true });
   const settings = path.join(SETTINGS_DIR, `${scenario.name}.${scenario.channel}.json`);
-  writeFileSync(
-    settings,
-    `${JSON.stringify(scenario.settings?.(port) ?? buildSettings({ scenario: scenario.name, channel: scenario.channel, port }), null, 2)}\n`,
-  );
+  const content: Record<string, unknown> = {
+    ...(scenario.settings?.(port) ??
+      buildSettings({ scenario: scenario.name, channel: scenario.channel, port })),
+  };
+  // In the settings file the token sits at rest (under ~/.micro-minds-dev, outside the repo): an
+  // `env` value is set verbatim, so it can't name another variable the way a hook header can.
+  // `split` is ADR 0030's layout: everything but the token in the settings file, the token header
+  // in the process env only.
+  let processTelemetry: Record<string, string> = {};
+  if (scenario.telemetry === 'settings') {
+    content.env = telemetryEnv(port, scenario.name, 'settings', token);
+  } else if (scenario.telemetry === 'split') {
+    const { OTEL_EXPORTER_OTLP_HEADERS: headers = '', ...rest } = telemetryEnv(
+      port,
+      scenario.name,
+      'settings',
+      token,
+    );
+    content.env = rest;
+    processTelemetry = { OTEL_EXPORTER_OTLP_HEADERS: headers };
+  } else if (scenario.telemetry === 'adr') {
+    // Exactly ADR 0030, decisions 2 and 3.
+    content.env = {
+      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+      OTEL_METRICS_EXPORTER: 'otlp',
+      OTEL_LOGS_EXPORTER: 'none',
+      OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: 'http/json',
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `http://${SINK_HOST}:${port}/otel/${scenario.name}/settings/v1/metrics`,
+      OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: 'delta',
+      OTEL_METRIC_EXPORT_INTERVAL: '5000',
+      OTEL_METRICS_INCLUDE_ACCOUNT_UUID: 'false',
+    };
+    processTelemetry = { OTEL_EXPORTER_OTLP_METRICS_HEADERS: `Authorization=Bearer ${token}` };
+  } else if (scenario.telemetry === 'env') {
+    processTelemetry = telemetryEnv(port, scenario.name, 'env', token);
+  }
+  if (scenario.statusLine === true) content.statusLine = statusLineSetting(scenario.name);
+  writeFileSync(settings, `${JSON.stringify(content, null, 2)}\n`);
   const settingsArgs = scenario.noSettings === true ? [] : ['--settings', settings];
   const pty = spawn(binary, [...settingsArgs, ...(scenario.args ?? [])], {
     name: 'xterm-256color',
     cols: 120,
     rows: 40,
     cwd: target,
-    env: childEnv(url, token),
+    env: childEnv(url, token, processTelemetry),
   });
   let screen = '';
   // Screen output since the current AskUserQuestion started (undefined when none is pending).
@@ -683,8 +863,9 @@ function summarize(events: CaptureEvent[]): string {
 }
 
 async function main(argv: string[]): Promise<number> {
-  // Recordings run by default; the task 1.3 experiments only by name or with --experiments.
-  const all = [...SCENARIOS, ...EXPERIMENTS];
+  // Recordings run by default; the task 1.3 experiments and 1.8 telemetry runs only by name or
+  // with --experiments / --telemetry.
+  const all = [...SCENARIOS, ...EXPERIMENTS, ...TELEMETRY];
   if (argv.includes('--list')) {
     for (const s of all) console.log(`${s.name} (${s.channel})`);
     return 0;
@@ -693,12 +874,18 @@ async function main(argv: string[]): Promise<number> {
     console.log(JSON.stringify({ hooks: userMergeHook(sinkPort()) }, null, 2));
     return 0;
   }
-  const names = argv.filter((a) => a !== '--experiments');
+  if (argv.includes('--user-telemetry')) {
+    console.log(JSON.stringify({ env: userTelemetryEnv(sinkPort()) }, null, 2));
+    return 0;
+  }
+  const names = argv.filter((a) => a !== '--experiments' && a !== '--telemetry');
   const wanted = argv.includes('--experiments')
     ? EXPERIMENTS
-    : names.length === 0
-      ? SCENARIOS
-      : all.filter((s) => names.includes(s.name));
+    : argv.includes('--telemetry')
+      ? TELEMETRY.filter((s) => !s.name.startsWith('t-user-'))
+      : names.length === 0
+        ? SCENARIOS
+        : all.filter((s) => names.includes(s.name));
   const unknown = names.filter((a) => !all.some((s) => s.name === a));
   if (unknown.length > 0) {
     console.error(`unknown scenario(s): ${unknown.join(', ')} (see --list)`);
@@ -719,6 +906,7 @@ async function main(argv: string[]): Promise<number> {
   let currentProbe: Scenario['probe'];
   const token = randomBytes(24).toString('base64url');
   const listeners = new Set<(e: CaptureEvent) => void>();
+  const telemetry: TelemetryEvent[] = [];
   const server = await startSink({
     port,
     token,
@@ -730,6 +918,7 @@ async function main(argv: string[]): Promise<number> {
     onCapture: (event) => {
       for (const listener of listeners) listener(event);
     },
+    onTelemetry: (event) => telemetry.push(event),
     probeReply: () => currentProbe,
   });
   const url = `http://${SINK_HOST}:${port}`;
@@ -751,6 +940,13 @@ async function main(argv: string[]): Promise<number> {
       );
       console.log(`  events: ${summarize(result.events) || '(none)'}`);
       if (scenario.timings) console.log(`  timings: ${summarizeTimed(result.events)}`);
+      // Telemetry exports by the scenario the endpoint named, channel and signal (counts only).
+      const counts = new Map<string, number>();
+      for (const t of telemetry.splice(0)) {
+        const key = `${t.scenario} ${t.channel} ${t.signal}`;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      for (const [key, n] of counts) console.log(`  telemetry: ${key} x${n}`);
       for (const note of result.notes) console.log(`  note: ${note}`);
       if (!result.ok) failures++;
     }

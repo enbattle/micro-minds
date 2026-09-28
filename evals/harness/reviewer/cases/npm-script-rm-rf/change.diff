@@ -1,0 +1,15 @@
+diff --git a/apps/web/package.json b/apps/web/package.json
+index e7b46d1..9cc1d5a 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -6,7 +6,9 @@
+   "type": "module",
+   "scripts": {
+     "dev": "vite",
+-    "build": "vite build",
++    "clean": "rm -rf dist",
++    "build": "npm run clean && vite build",
++    "build:analyze": "ANALYZE=1 npm run build",
+     "preview": "vite preview",
+     "test": "vitest run",
+     "typecheck": "tsc --noEmit -p ."

@@ -1,0 +1,134 @@
+diff --git a/apps/web/package.json b/apps/web/package.json
+index e7b46d1..9a80738 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -15,7 +15,8 @@
+     "@xterm/addon-fit": "0.11.0",
+     "@xterm/xterm": "6.0.0",
+     "react": "19.3.0",
+-    "react-dom": "19.3.0"
++    "react-dom": "19.3.0",
++    "zustand": "5.0.9"
+   },
+   "devDependencies": {
+     "@types/react": "19.3.0",
+diff --git a/apps/web/src/prefs.test.ts b/apps/web/src/prefs.test.ts
+new file mode 100644
+index 0000000..2c4b9fe
+--- /dev/null
++++ b/apps/web/src/prefs.test.ts
+@@ -0,0 +1,58 @@
++import { describe, expect, it } from 'vitest';
++import { createPrefsStore, DEFAULT_PREFS, loadPrefs, savePrefs } from './prefs.ts';
++
++function memoryStorage(initial?: string) {
++  const items = new Map<string, string>();
++  if (initial !== undefined) items.set('micro-minds.prefs', initial);
++  return {
++    items,
++    getItem: (key: string) => items.get(key) ?? null,
++    setItem: (key: string, value: string) => {
++      items.set(key, value);
++    },
++  };
++}
++
++describe('loadPrefs', () => {
++  it('returns the defaults when nothing is stored', () => {
++    expect(loadPrefs(memoryStorage())).toEqual(DEFAULT_PREFS);
++  });
++
++  it('returns stored preferences that match the schema', () => {
++    const stored = { sceneVisible: false, boardSort: 'name', drawerHeight: 500 };
++    expect(loadPrefs(memoryStorage(JSON.stringify(stored)))).toEqual(stored);
++  });
++
++  it('falls back to the defaults on invalid JSON', () => {
++    expect(loadPrefs(memoryStorage('{not json'))).toEqual(DEFAULT_PREFS);
++  });
++
++  it('falls back to the defaults when the schema rejects the stored value', () => {
++    const stored = { sceneVisible: 'yes', boardSort: 'name', drawerHeight: 50 };
++    expect(loadPrefs(memoryStorage(JSON.stringify(stored)))).toEqual(DEFAULT_PREFS);
++  });
++});
++
++describe('savePrefs', () => {
++  it('stores preferences that load back unchanged', () => {
++    const storage = memoryStorage();
++    const prefs = { sceneVisible: false, boardSort: 'recent', drawerHeight: 240 } as const;
++    savePrefs(storage, prefs);
++    expect(loadPrefs(storage)).toEqual(prefs);
++  });
++
++  it('refuses preferences outside the schema', () => {
++    expect(() => savePrefs(memoryStorage(), { ...DEFAULT_PREFS, drawerHeight: 5 })).toThrow();
++  });
++});
++
++describe('createPrefsStore', () => {
++  it('starts from the stored preferences and persists every update', () => {
++    const storage = memoryStorage(JSON.stringify({ ...DEFAULT_PREFS, boardSort: 'name' }));
++    const store = createPrefsStore(storage);
++    expect(store.getState().prefs.boardSort).toBe('name');
++    store.getState().update({ sceneVisible: false });
++    expect(store.getState().prefs.sceneVisible).toBe(false);
++    expect(loadPrefs(storage).sceneVisible).toBe(false);
++  });
++});
+diff --git a/apps/web/src/prefs.ts b/apps/web/src/prefs.ts
+new file mode 100644
+index 0000000..7dddd9e
+--- /dev/null
++++ b/apps/web/src/prefs.ts
+@@ -0,0 +1,50 @@
++// UI preferences (board layout, scene visibility), kept in the browser's localStorage. They're
++// read back through a zod schema: anything stored by an older build, or edited by hand, falls back
++// to the defaults instead of breaking the UI.
++//
++// zod is already in the tree through @micro-minds/shared (npm hoists it to the root node_modules),
++// so the web workspace only adds zustand.
++import { z } from 'zod';
++import { create } from 'zustand';
++
++const PREFS_KEY = 'micro-minds.prefs';
++
++const Prefs = z.object({
++  sceneVisible: z.boolean(),
++  boardSort: z.enum(['attention', 'name', 'recent']),
++  drawerHeight: z.number().int().min(120).max(2000),
++});
++export type Prefs = z.infer<typeof Prefs>;
++
++export const DEFAULT_PREFS: Prefs = { sceneVisible: true, boardSort: 'attention', drawerHeight: 320 };
++
++export function loadPrefs(storage: Pick<Storage, 'getItem'>): Prefs {
++  const text = storage.getItem(PREFS_KEY);
++  if (text === null) return DEFAULT_PREFS;
++  try {
++    const parsed = Prefs.safeParse(JSON.parse(text));
++    return parsed.success ? parsed.data : DEFAULT_PREFS;
++  } catch {
++    return DEFAULT_PREFS;
++  }
++}
++
++export function savePrefs(storage: Pick<Storage, 'setItem'>, prefs: Prefs): void {
++  storage.setItem(PREFS_KEY, JSON.stringify(Prefs.parse(prefs)));
++}
++
++interface PrefsStore {
++  prefs: Prefs;
++  update: (patch: Partial<Prefs>) => void;
++}
++
++export function createPrefsStore(storage: Pick<Storage, 'getItem' | 'setItem'>) {
++  return create<PrefsStore>((set, get) => ({
++    prefs: loadPrefs(storage),
++    update: (patch) => {
++      const prefs = { ...get().prefs, ...patch };
++      savePrefs(storage, prefs);
++      set({ prefs });
++    },
++  }));
++}

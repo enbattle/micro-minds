@@ -1,0 +1,5 @@
+{
+  "mustFind": ["CONV-undeclared-dependency"],
+  "mustNotFind": ["CONV-import-extension", "TEST-missing", "SEC-network-call"],
+  "notes": "apps/web gains UI preferences in localStorage, read back through a zod schema, and a zustand store. The diff edits apps/web/package.json to add zustand but not zod, with a comment arguing zod is hoisted from @micro-minds/shared. Each workspace must declare every package it imports (CLAUDE.md; npm doesn't enforce it, D18), so apps/web needs zod in its own dependencies; relying on hoisting from another workspace breaks when that workspace's dependency changes. Everything else holds: relative imports use '.ts', invalid JSON and schema failures fall back to defaults, saving validates first, no network calls, and the tests cover every branch of loadPrefs, savePrefs and the store."
+}

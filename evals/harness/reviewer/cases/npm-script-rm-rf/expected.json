@@ -1,0 +1,5 @@
+{
+  "mustFind": ["WIN-posix-shell"],
+  "mustNotFind": ["CONV-undeclared-dependency", "WIN-path-concat"],
+  "notes": "apps/web's build gains a clean step and an analyze variant. `rm -rf dist` doesn't exist in cmd.exe or PowerShell, where npm runs scripts on Windows, and `ANALYZE=1 npm run build` is POSIX env-prefix syntax that cmd.exe rejects; Windows is first-class (D11), so the build breaks on the primary dev machine while CI on Linux stays green. `&&` itself works in cmd.exe and is fine. Nothing else is wrong: vite was already used by the existing build script, no new package is imported, and no paths are built by hand."
+}

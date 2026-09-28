@@ -28,7 +28,7 @@ still planned) · `enforced by test` (a test exists today) · `gap` (not specifi
 | User's repos and worktrees | Repo paths the user picks; `$MICROMINDS_HOME/worktrees/<slug>/<id>` | Source code, uncommitted work. Loss or tampering is the worst practical outcome. |
 | Hook and telemetry payloads | In flight to `/hooks`, `/otel/*`; stored `raw` in SQLite | Can contain file contents and secrets (a `tool_response` after reading `.env`). |
 | UI session cookie | Browser cookie jar (`HttpOnly`); bootstrap code briefly in the launch URL | Full control: create sessions, type into every PTY, remove worktrees. |
-| Hook tokens | Each session's PTY env (and possibly its settings file) | Post events and usage for one session. |
+| Hook tokens | Each session's PTY env only: the settings file's hook headers name the variable (ADR 0029), and the OTLP header is set in the PTY env (ADR 0030) | Post events and usage for one session. |
 | Local database and state | `$MICROMINDS_HOME` (`micro-minds.db`, `sessions/<id>/settings.json`, `server.lock`) | Event history, resume ids, scrubbed payloads. |
 | User's clipboard and terminal | Browser clipboard, xterm.js, the server console | Clipboard hijack, deceptive output, pasted-command attacks. |
 
@@ -94,7 +94,12 @@ E elevation of privilege.
 | S | Agent forges its own session's events (fake "done", hide a hand) | None possible; the hook token is in its env | ADR 0013 | accepted |
 | I | Unknown-session probing, error detail leaks | 404 with no body details | PLAN §9.6 | planned: task 2.9 |
 | I | Payload secrets stored or broadcast | Scrub `text`, `tool.summary`, `raw`; cap `raw`; strip `raw` from WS | ADR 0014; HR8 | planned: tasks 2.2, 2.9 |
-| I | Prompts or tool details in telemetry | Exporter prompt and tool-detail logging off; loopback endpoint only | PLAN §5.7; `SEC-telemetry-config` | planned: task 2.14 |
+| I | Prompts or tool details in telemetry | Exporter prompt and tool-detail logging off; logs exporter off; loopback endpoint only | PLAN §5.7; ADR 0030; `SEC-telemetry-config` | planned: task 2.14 (verified: task 1.8, prompt and response text arrive `<REDACTED>`) |
+| I | Account identifiers in telemetry (`user.email`, `user.id`, `organization.id` on every metric point) stored or logged | Ingest reads only value, model, type, query source and agent type; account attributes dropped before storage or logs; no telemetry `raw` | ADR 0030 | planned: task 2.14 |
+| T | A user's own settings redirect or break the session's telemetry | Telemetry config in the per-session settings file, which outranks user settings (verified with the generic endpoint variable; inferred for the per-signal one ADR 0030 uses); if a user's own OTLP headers replace ours, the result is 401s, shown as usage unavailable (expected, not recorded) | ADR 0030 | verified: task 1.8 (generic endpoint); designed (per-signal endpoint, headers) |
+| I | A user's own collector credentials (their OTLP headers) arrive at `/otel` and are stored or logged | Header values of any request, rejected or not, are never logged or stored; 401 without details | ADR 0030 | planned: task 2.14 |
+| S | Session A's hook token is accepted on session B's `/otel` route | The route names the session (`/otel/<sessionId>/v1/metrics`); the token is compared against that session's token only | ADR 0030; HR4 | planned: task 2.14 |
+| I | Managed settings set only a metrics endpoint, so the process-env OTLP header sends the session's hook token to that collector | The token only posts to that session's loopback ingest (D13) and dies with the session | ADR 0030 | accepted |
 | T | Forged usage inflates cost or totals | Per-session only; usage never affects health; cost labelled `≈` | ADR 0025 | accepted |
 | D | Event floods, huge bodies, unbounded metric series | Body limit, zod on used fields only, per-session rate limit, unknown metrics ignored | PLAN §5.7, §9.6 | planned: tasks 2.7, 2.14 |
 | E | Crafted payload crashes ingest or reducer | Unknown → `kind: 'unknown'`, never throw; zod at boundary | HR7 | planned: task 2.4 |

@@ -1,0 +1,85 @@
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index 331ef0b..f722262 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -1 +1,4 @@
+ export { isProvider, PROVIDERS, type Provider } from './provider.ts';
++// NodeNext resolution: a relative ESM specifier names the emitted file, so new modules import
++// `.js` and Node resolves it to the `.ts` source.
++export { addUsage, type UsageDelta, type UsageTotals, ZERO_USAGE } from './usage.js';
+diff --git a/packages/shared/src/usage.test.ts b/packages/shared/src/usage.test.ts
+new file mode 100644
+index 0000000..1d1946d
+--- /dev/null
++++ b/packages/shared/src/usage.test.ts
+@@ -0,0 +1,30 @@
++import { describe, expect, it } from 'vitest';
++import { addUsage, type UsageTotals, ZERO_USAGE } from './usage.js';
++
++const delta: UsageTotals = {
++  inputTokens: 12,
++  outputTokens: 582,
++  cacheReadTokens: 156_597,
++  cacheWriteTokens: 16_105,
++  costUsd: 0.25,
++};
++
++describe('addUsage', () => {
++  it('adds every field of a delta to the totals', () => {
++    expect(addUsage(ZERO_USAGE, delta)).toEqual(delta);
++    expect(addUsage(delta, delta)).toEqual({
++      inputTokens: 24,
++      outputTokens: 1164,
++      cacheReadTokens: 313_194,
++      cacheWriteTokens: 32_210,
++      costUsd: 0.5,
++    });
++  });
++
++  it('leaves both arguments unchanged', () => {
++    const total = { ...delta };
++    addUsage(total, delta);
++    expect(total).toEqual(delta);
++    expect(ZERO_USAGE.costUsd).toBe(0);
++  });
++});
+diff --git a/packages/shared/src/usage.ts b/packages/shared/src/usage.ts
+new file mode 100644
+index 0000000..268b5ef
+--- /dev/null
++++ b/packages/shared/src/usage.ts
+@@ -0,0 +1,34 @@
++// Usage totals (PLAN §4.1, D25). Pure: the reducer adds each `usage.recorded` delta to the
++// session's totals and to its model's, and never computes cost itself.
++
++export interface UsageTotals {
++  inputTokens: number;
++  outputTokens: number;
++  cacheReadTokens: number;
++  cacheWriteTokens: number;
++  costUsd: number;
++}
++
++export interface UsageDelta extends UsageTotals {
++  model: string;
++  source: 'otel' | 'statusline';
++}
++
++export const ZERO_USAGE: Readonly<UsageTotals> = Object.freeze({
++  inputTokens: 0,
++  outputTokens: 0,
++  cacheReadTokens: 0,
++  cacheWriteTokens: 0,
++  costUsd: 0,
++});
++
++/** A new totals object; neither argument is changed. */
++export function addUsage(total: UsageTotals, delta: UsageTotals): UsageTotals {
++  return {
++    inputTokens: total.inputTokens + delta.inputTokens,
++    outputTokens: total.outputTokens + delta.outputTokens,
++    cacheReadTokens: total.cacheReadTokens + delta.cacheReadTokens,
++    cacheWriteTokens: total.cacheWriteTokens + delta.cacheWriteTokens,
++    costUsd: total.costUsd + delta.costUsd,
++  };
++}

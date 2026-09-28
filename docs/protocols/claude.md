@@ -120,14 +120,50 @@ finding 4 comes from the payload fields of the recordings instead.
   a `SessionStart` with `source` other than `startup`, or `PreCompact` with `trigger: "auto"`.
   Their rows above follow the docs; a fixture replaces each when one is recorded (the
   `record-fixture` skill).
-- **Usage telemetry** (OpenTelemetry vs status line, PLAN §5.7) is task 1.8, which adds its verdict
-  here.
+- **Usage telemetry:** whether the CLI flushes a final export on exit (every run waited at least
+  6 s after its last request).
+
+## Usage telemetry
+
+Recorded in task 1.8 (`spikes/phase-1/TELEMETRY.md`); the decision is ADR 0030 (D30).
+
+- **Channel:** OpenTelemetry metrics over OTLP/HTTP JSON (`http/json`) to a loopback endpoint, with
+  the bearer token in the OTLP headers (**recorded**). The status line is not used.
+- **Metrics** (scope `com.anthropic.claude_code`, **recorded**): `claude_code.cost.usage` (`USD`)
+  and `claude_code.token.usage` (`tokens`, `type`: `input`, `output`, `cacheRead`,
+  `cacheCreation`) are the ones ingest reads; also `session.count`, `active_time.total` (`s`),
+  `lines_of_code.count` and `code_edit_tool.decision`. All are monotonic sums with **delta**
+  temporality (`aggregationTemporality: 1`) by default.
+- **Attributes** (**recorded**): `model` and `query_source` (`main`, `subagent`, `auxiliary`) on
+  every cost and token point, `effort` on most, `agent.name` (the subagent type, for example
+  `Explore`) on subagent points; `session.id` equals the hooks' `session_id`. Every point also
+  carries `user.email`, `user.id` and `organization.id` (with account UUIDs switched off), which
+  ingest drops.
+- **Subagents:** by type only; there is no agent id in any metric or log event (**recorded**).
+- **Totals:** metric cost totals equal the per-request `api_request` log costs (**recorded**).
+- **Precedence** (**recorded**, with the generic `OTEL_EXPORTER_OTLP_ENDPOINT`; inferred for the
+  per-signal variables): the user's settings `env` beats the process env;
+  our `--settings` `env` beats the user's settings; the settings file's `env` and the process env
+  combine. A user's own OTLP headers were not tested. The docs
+  add that managed settings beat everything and repository settings are ignored for these
+  variables.
+- **Configuration** (ADR 0030, **recorded** as `t-adr`): in the per-session settings `env`,
+  `CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_METRICS_EXPORTER=otlp`, `OTEL_LOGS_EXPORTER=none`,
+  `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL=http/json`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`,
+  `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta`, `OTEL_METRIC_EXPORT_INTERVAL=5000`,
+  `OTEL_METRICS_INCLUDE_ACCOUNT_UUID=false`, with the endpoint naming micro-minds' session
+  (`/otel/<sessionId>/v1/metrics`); in the PTY env only,
+  `OTEL_EXPORTER_OTLP_METRICS_HEADERS=Authorization=Bearer <hook token>`. Exports came every 5.0 s.
+- **Status line** (**recorded**, not used): session-cumulative `cost.total_cost_usd` with no model
+  split, `context_window`, and `rate_limits` (five-hour and seven-day `used_percentage`); it runs on
+  UI redraws and its last value missed the final requests.
 
 ## Fixtures
 
 Scrubbed recordings live in `fixtures/claude/` (task 1.7, `record-fixture` skill, made by
 `npm run spike:scrub`), each listed here with its scenario, CLI version, OS, date and what it shows.
-Each line is one HTTP hook payload, in arrival order, except in `qa-command-hook` (the relay).
+Each line of a hook fixture is one hook payload, in arrival order (HTTP hooks, except in
+`qa-command-hook`, the relay); the `otel-*` and `statusline-*` fixtures hold telemetry.
 All were recorded with Claude Code 2.1.283 on Windows 11, in `auto` permission mode except
 `permission-prompt` (`default`).
 
@@ -144,6 +180,10 @@ All were recorded with Claude Code 2.1.283 on Windows 11, in `auto` permission m
 | `ctrl-c.jsonl` | (g) Ctrl-C | 2026-09-27 | `PreToolUse(Bash)`, then nothing until `SessionEnd` from quitting |
 | `process-killed.jsonl` | (h) process killed | 2026-09-27 | `PreToolUse(Bash)`, then nothing at all |
 | `compaction.jsonl` | (i) compaction | 2026-09-27 | `PreCompact` (`manual`), an unseen agent's `SubagentStop`, and `Notification` (`idle_prompt`) |
+| `otel-qa.jsonl` | (a) Q&A, telemetry (`t-qa`) | 2026-09-28 | One OTLP/JSON metrics export per line: delta cost and token points for the main and an auxiliary model |
+| `otel-read-edit.jsonl` | (b) read + edit, telemetry (`t-read-edit`) | 2026-09-28 | The same, plus `lines_of_code.count` and `code_edit_tool.decision` |
+| `otel-subagent.jsonl` | (f) subagent, telemetry (`t-subagent`) | 2026-09-28 | Subagent points: `query_source: "subagent"`, `agent.name: "Explore"`, no agent id |
+| `statusline-qa.jsonl`, `statusline-read-edit.jsonl`, `statusline-subagent.jsonl` | (a), (b), (f), status line | 2026-09-28 | One status-line stdin JSON per line; cumulative `cost.total_cost_usd` |
 
 Replay tests come with the adapter and reducer (tasks 2.1 and 2.4; Phase 2's "Done when" needs
-one per fixture).
+one per fixture) and, for the telemetry fixtures, with usage capture (task 2.14).

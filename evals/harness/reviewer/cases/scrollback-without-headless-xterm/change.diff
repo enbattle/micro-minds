@@ -1,0 +1,84 @@
+diff --git a/apps/server/src/sessions/scrollback.test.ts b/apps/server/src/sessions/scrollback.test.ts
+new file mode 100644
+index 0000000..1955c57
+--- /dev/null
++++ b/apps/server/src/sessions/scrollback.test.ts
+@@ -0,0 +1,31 @@
++import { describe, expect, it } from 'vitest';
++import { createScrollback, MAX_SCROLLBACK_BYTES } from './scrollback.ts';
++
++describe('createScrollback', () => {
++  it('replays everything appended while under the limit', () => {
++    const scrollback = createScrollback(64);
++    scrollback.append('hello ');
++    scrollback.append('\u001b[32mworld\u001b[0m');
++    expect(scrollback.snapshot()).toBe('hello \u001b[32mworld\u001b[0m');
++    expect(scrollback.size).toBe(Buffer.byteLength(scrollback.snapshot()));
++  });
++
++  it('keeps only the newest bytes once over the limit', () => {
++    const scrollback = createScrollback(8);
++    scrollback.append('abcdef');
++    scrollback.append('ghijkl');
++    expect(scrollback.snapshot()).toBe('efghijkl');
++    expect(scrollback.size).toBe(8);
++  });
++
++  it('defaults to MAX_SCROLLBACK_BYTES', () => {
++    const scrollback = createScrollback();
++    scrollback.append('x'.repeat(MAX_SCROLLBACK_BYTES + 10));
++    expect(scrollback.size).toBe(MAX_SCROLLBACK_BYTES);
++  });
++
++  it('rejects a limit that is not a positive integer', () => {
++    expect(() => createScrollback(0)).toThrow(RangeError);
++    expect(() => createScrollback(1.5)).toThrow(RangeError);
++  });
++});
+diff --git a/apps/server/src/sessions/scrollback.ts b/apps/server/src/sessions/scrollback.ts
+new file mode 100644
+index 0000000..d026227
+--- /dev/null
++++ b/apps/server/src/sessions/scrollback.ts
+@@ -0,0 +1,41 @@
++// Scrollback for reconnecting browser tabs. Rather than a headless xterm per session, keep the
++// last MAX_SCROLLBACK_BYTES of raw PTY output and replay it on `pty.snapshot`: a reconnecting
++// xterm.js re-renders it the same way it did live, and each session costs a few buffers instead
++// of a second terminal emulator (and no @xterm/headless dependency on the server).
++
++export const MAX_SCROLLBACK_BYTES = 1024 * 1024;
++
++export interface Scrollback {
++  append(chunk: string): void;
++  /** The retained output, oldest first. */
++  snapshot(): string;
++  readonly size: number;
++}
++
++export function createScrollback(maxBytes: number = MAX_SCROLLBACK_BYTES): Scrollback {
++  if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
++    throw new RangeError(`maxBytes must be a positive integer, got ${maxBytes}`);
++  }
++  let chunks: Buffer[] = [];
++  let size = 0;
++  return {
++    append(chunk) {
++      const bytes = Buffer.from(chunk, 'utf8');
++      chunks.push(bytes);
++      size += bytes.length;
++      if (size > maxBytes) {
++        // Keep only the newest maxBytes: one copy, then a single retained buffer.
++        const all = Buffer.concat(chunks);
++        const kept = all.subarray(all.length - maxBytes);
++        chunks = [kept];
++        size = kept.length;
++      }
++    },
++    snapshot() {
++      return Buffer.concat(chunks).toString('utf8');
++    },
++    get size() {
++      return size;
++    },
++  };
++}
