@@ -8,9 +8,15 @@ Throwaway tooling for the Claude protocol spike ([PLAN §10, Phase 1](../../docs
 | `relay.ts` | Command-hook path into the sink. Fails open: always exits 0, never writes to stdout, 500 ms POST timeout. |
 | `settings.ts` | Writes `~/.micro-minds-dev/spike/settings/<s>.<channel>.json` (hooks only) for `claude --settings`. |
 | `relay-selftest.ts` | Checks both channels, the token and Host checks and the fail-open rules against a temporary sink. No `claude` involved. |
+| `drive.ts` | `npm run spike:drive [-- <scenario>...]`: records the scenarios as real interactive sessions in node-pty, driven by the hook events the in-process sink receives. Writes each scenario's settings for the port it listens on (`SPIKE_SINK_PORT` or 47110) and gives each scenario a fresh scratch repo under `~/.micro-minds-dev/spike/targets/` (it never runs git in a repo a recorded agent has touched). Spends the user's tokens. |
+| `make-target.ts` | `npm run spike:target`: creates the scratch repo `~/micro-minds-spike-target` for recording by hand; `createTarget()` also builds the driver's per-scenario copies. |
+| `SCENARIOS.md` | What was recorded, the event sequences, and the findings for task 1.6. |
 | `paths.ts` | Shared paths, port and scenario-name rules. |
 
 ## Recording a scenario
+
+With the user's OK, `npm run spike:drive` records every scenario (see `SCENARIOS.md`). To record one
+by hand instead:
 
 1. **Start the sink** in one terminal: `npm run spike:sink`. It prints a fresh token and the lines to set `MICROMINDS_URL` and `MICROMINDS_HOOK_TOKEN`. The default port is 47110 (`SPIKE_SINK_PORT` overrides it).
 2. **Generate settings**: `npm run spike:settings -- <scenario> --channel http` (or `relay`). Scenario names are lowercase letters, digits and dashes, for example `a-qa` or `f-subagent`.

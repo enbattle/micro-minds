@@ -22,6 +22,15 @@ export interface SinkOptions {
   token: string;
   capturesDir: string;
   log?: (line: string) => void;
+  /** Called after each capture is written, with only what a driver needs to react (drive.ts). */
+  onCapture?: (event: CaptureEvent) => void;
+}
+
+export interface CaptureEvent {
+  scenario: string;
+  channel: string;
+  hookEventName: string;
+  toolName: string | undefined;
 }
 
 export interface CaptureRecord {
@@ -75,6 +84,12 @@ function parseBody(bytes: Buffer): unknown {
   }
 }
 
+function stringField(body: unknown, key: string): string | undefined {
+  if (typeof body !== 'object' || body === null || !(key in body)) return undefined;
+  const value = (body as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
 function eventName(body: unknown): string {
   if (typeof body === 'object' && body !== null && 'hook_event_name' in body) {
     const name = (body as { hook_event_name: unknown }).hook_event_name;
@@ -114,6 +129,12 @@ export function startSink(options: SinkOptions): Promise<Server> {
     const write = writes.then(() => appendFile(file, `${JSON.stringify(record)}\n`, 'utf8'));
     writes = write.catch(() => undefined);
     await write;
+    options.onCapture?.({
+      scenario,
+      channel,
+      hookEventName: eventName(record.body),
+      toolName: stringField(record.body, 'tool_name'),
+    });
 
     log(
       `${new Date(record.receivedAt).toISOString()} ${scenario} ${channel} ${eventName(record.body)} ${bytes.length}B`,

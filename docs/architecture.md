@@ -39,7 +39,7 @@ Imports only go *into* `packages/shared`, never out of it. Apps never import eac
 | `scripts/fix-node-pty.ts` | postinstall: restores the exec bit on node-pty's macOS `spawn-helper` | 0.10 |
 | `scripts/lint-commits.ts` | Conventional Commits check for commits and PR titles (CI job `commits`); `npm run lint:title` | PR #4 |
 | `scripts/tests-locked.ts` | The test lock (ADR 0028): fails if a test path changed after the task's `Test-lock:` commit; `npm run tests:locked -- <id>` | PR #9 |
-| `spikes/phase-1/` | Throwaway Phase 1 hook capture: loopback sink, fail-open relay, `--settings` generator ([README](../spikes/phase-1/README.md)). Deleted by the PR that closes Phase 2 | 1.1 |
+| `spikes/phase-1/` | Throwaway Phase 1 hook capture: loopback sink, fail-open relay, `--settings` generator, PTY recording driver, scratch-repo setup ([README](../spikes/phase-1/README.md)). Deleted by the PR that closes Phase 2 | 1.1 |
 
 ## Harness (not shipped with the app)
 

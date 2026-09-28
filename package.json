@@ -28,12 +28,15 @@
     "eval:harness": "node evals/harness/reviewer/run.ts",
     "spike:sink": "node spikes/phase-1/sink.ts",
     "spike:settings": "node spikes/phase-1/settings.ts",
+    "spike:drive": "node spikes/phase-1/drive.ts",
+    "spike:target": "node spikes/phase-1/make-target.ts",
     "spike:relay-selftest": "node spikes/phase-1/relay-selftest.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@types/node": "24.19.0",
     "@vitest/coverage-v8": "5.0.2",
+    "node-pty": "1.1.0",
     "typescript": "7.0.2",
     "vitest": "5.0.2"
   }
