@@ -530,7 +530,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 - [ ] 3.1 Vite + React shell; bootstrap exchange (D26, fragment stripped immediately) and a Vite proxy for `/api` and `/ws` in dev; WS client with reconnect, and a snapshot that replaces local state. Add a **bundle-size budget** check to CI, and web coverage thresholds (docs/engineering-standards.md).
 - [ ] 3.2 zustand store applying events through the shared `reduce()`.
-- [ ] 3.3 Terminal drawer: one xterm per session, tabs, fit + resize, repaint from `pty.snapshot`. **Terminal output is untrusted** (docs/security/threat-model.md): no OSC 52 clipboard writes, and links open only after a confirmation showing the real URL (reviewer rule `SEC-terminal-escape`).
+- [ ] 3.3 Terminal drawer: one xterm per session, tabs, fit + resize, repaint from `pty.snapshot`. **Terminal output is untrusted** (docs/security/threat-model.md): no OSC 52 clipboard writes, and links open only after a confirmation showing the real URL (reviewer rule `SEC-terminal-escape`). **Manual check** (left open by 1.5, which saw only an existing login carry over): the user logs out of Claude Code, starts a session from the app, and completes the login or re-authentication flow inside the drawer. The app never sees or enters credentials (D4). Run it once a session can be started from the UI (with 3.6 at the latest), and have everything else done first: logging out ends the login for every Claude Code session, including one driving the phase.
 - [ ] 3.4 Board: subagent indentation, activity icons, health colors, relative times, telemetry badge.
 - [ ] 3.5 Inbox: attention items, oldest first; clicking jumps to the terminal.
 - [ ] 3.6 New Agent dialog with preflight results and recent repos.
