@@ -17,7 +17,7 @@ tokens: no prompt was sent.
 
 | Check | What was done | Result |
 |---|---|---|
-| Login | Started `claude`; answered the folder-trust dialog for the fresh worktree | **Pass.** No login prompt: the normal input box, with the model and plan shown. The trust dialog itself also rendered correctly. |
+| Login | Started `claude`; answered the folder-trust dialog for the fresh worktree | **Pass for an existing login:** no login prompt, the normal input box with the model and plan shown, so the user's login carries into a PTY session in a worktree. The trust dialog itself also rendered correctly. A fresh login or re-authentication flow in the PTY was not exercised: it needs the user's credentials, which the session never enters, so it stays a manual check. |
 | Colors | Screenshots of the trust dialog and the input screen | **Pass.** The orange logo and headings, the highlighted choice, and the colored mode footer, with no raw escape codes. |
 | Resize | Shrank the terminal container to about 520 px wide (the page's fit addon sent the new size), then restored it | **Pass.** Claude redrew for the new width (the worktree path ends in "…", the rules shorten), and again at full width, with no garbled or duplicated lines. |
 | Alternate screen | `/config`, then Esc twice (the first leaves the search box) | **Pass.** The full-screen settings view rendered cleanly, and the previous screen came back intact. |
