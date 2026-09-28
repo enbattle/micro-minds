@@ -16,7 +16,8 @@ Reporting process: [SECURITY.md](../../SECURITY.md).
   confirm statuses, and add rows for anything new.
 
 Status legend: `designed` (specified, no code yet) · `planned: task N.M` (the task that builds or
-tests it) · `enforced by test` (a test exists today) · `gap` (not specified anywhere yet; see
+tests it) · `verified: task N.M` (a Phase 1 spike showed the mechanism works; the enforcing code is
+still planned) · `enforced by test` (a test exists today) · `gap` (not specified anywhere yet; see
 [Open gaps](#open-gaps)).
 
 ## Assets
@@ -139,14 +140,14 @@ end up printed verbatim.
 | T | Symlink or junction tricks make "Remove worktree" delete outside the root | Resolve real paths; require a registered worktree (`git worktree list`); remove via `git worktree remove`, never a recursive delete that follows links | HR11; `SEC-worktree-removal` | planned: task 2.5 |
 | T | Removal destroys uncommitted or unpushed work | Explicit confirmed action with dirty and unpushed warnings | PLAN §5.5; HR11 | planned: tasks 2.5, 3.8 |
 | E | Hostile repo's git config (`core.fsmonitor`, `core.hooksPath`) runs code when we run `git` | Argv only, `--` before paths, `-c core.fsmonitor=false`, empty hooks path | `SEC-worktree-removal` | planned: task 2.5 |
-| E | Our injected settings widen a hostile repo's power | Per-session file holds only hooks and env; no permission allows, no permission-skip flags; outside the worktree | PLAN §5.2; HR2 | planned: task 1.3 |
+| E | Our injected settings widen a hostile repo's power | Per-session file holds only hooks and env; no permission allows, no permission-skip flags; outside the worktree | PLAN §5.2; HR2; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (settings merge with project hooks; the file holds hooks only); planned: task 2.6 |
 
 ### Event store and local data (B3)
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
 | I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7 | planned: tasks 2.2, 2.7 |
-| I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6 | planned: task 1.3 (verify), 2.6 |
+| I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (the header reads the token only through `allowedEnvVars`); planned: task 2.6 |
 | I | Tokens or `raw` in logs; log injection via agent text | Never log tokens or `raw`; pino JSON escapes control characters | HR8; `SEC-token-exposure` | planned: task 2.7 |
 | T | Corrupt DB bricks startup | Move aside and start fresh | PLAN §5.6 | planned: task 2.11 |
 

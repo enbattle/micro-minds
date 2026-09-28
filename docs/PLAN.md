@@ -489,7 +489,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 - [x] 1.1 A capture sink (in `spikes/phase-1/`) that appends raw payloads to `~/.micro-minds-dev/spike/captures/<scenario>.jsonl` (outside the repo; scrubbed into `fixtures/claude/` in 1.7), fed by an HTTP hook and by the relay.
 - [x] 1.2 Record scenarios: (a) Q&A, (b) read + edit, (c) failing shell command, (d) permission prompt, (e) AskUserQuestion, (f) subagent, (g) Ctrl-C, (h) process killed, (i) compaction if practical.
-- [ ] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
+- [x] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
 - [ ] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
 - [ ] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
 - [ ] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.

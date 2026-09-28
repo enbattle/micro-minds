@@ -35,7 +35,7 @@ import {
   sinkPort,
 } from './paths.ts';
 import { buildSettings } from './settings.ts';
-import { type CaptureEvent, startSink } from './sink.ts';
+import { type CaptureEvent, PROBE_CHANNEL, startSink } from './sink.ts';
 
 const SECOND = 1000;
 
@@ -61,6 +61,14 @@ interface Scenario {
   answerQuestions?: boolean;
   /** Extra CLI arguments for this session only (never the user's settings). */
   args?: string[];
+  /** Task 1.3 experiments: the --settings content, instead of one channel for every event. */
+  settings?: (port: number) => Record<string, unknown>;
+  /** Task 1.3 experiments: a project-level .claude/settings.json in the scratch repo. */
+  projectSettings?: (port: number) => Record<string, unknown>;
+  /** Task 1.3 experiments: how the sink replies on the probe channel. */
+  probe?: { delayMs?: number; status?: number };
+  /** Print each event's arrival time and channel. */
+  timings?: boolean;
   steps: Step[];
 }
 
@@ -68,6 +76,118 @@ const LONG_PROMPT = 'Explain every file in this repository in detail, one sectio
 const turn = (text: string, timeoutMs = 180 * SECOND): Step[] => [
   { kind: 'prompt', text },
   { kind: 'wait', event: 'Stop', timeoutMs },
+];
+
+// ---- Task 1.3 experiments: settings merging, env interpolation, blocking and failures. ----
+
+const TOKEN_HEADER = { Authorization: 'Bearer $MICROMINDS_HOOK_TOKEN' };
+const HTTP_TIMEOUT_SECONDS = 5;
+
+function httpHook(port: number, scenario: string, channel: string, allowEnv = true) {
+  const url = new URL('/hooks', `http://${SINK_HOST}:${port}`);
+  url.searchParams.set('scenario', scenario);
+  url.searchParams.set('channel', channel);
+  return {
+    type: 'http',
+    url: url.toString(),
+    headers: TOKEN_HEADER,
+    allowedEnvVars: allowEnv ? ['MICROMINDS_HOOK_TOKEN'] : [],
+    timeout: HTTP_TIMEOUT_SECONDS,
+  };
+}
+
+/** Every event through the relay (a command hook), as the timing baseline. */
+function relayEverywhere(port: number, scenario: string): Record<string, unknown[]> {
+  const base = buildSettings({ scenario, channel: 'relay', port }).hooks;
+  return { ...(base as Record<string, unknown[]>) };
+}
+
+const READ_PROMPT = 'Read src/math.js and tell me its first line.';
+
+const EXPERIMENTS: Scenario[] = [
+  {
+    // E1: project settings with their own UserPromptSubmit hook (probe channel) next to ours
+    // (http channel). Both arriving means they merge.
+    name: 'x-merge',
+    channel: 'http',
+    projectSettings: (port) => ({
+      hooks: { UserPromptSubmit: [{ hooks: [httpHook(port, 'x-merge', PROBE_CHANNEL)] }] },
+    }),
+    steps: [...turn('Reply with the single word ok.'), { kind: 'exit' }],
+  },
+  {
+    // E2: the header names the token but allowedEnvVars is empty: the docs say it becomes "".
+    name: 'x-env-unlisted',
+    channel: 'http',
+    settings: (port) => ({
+      hooks: Object.fromEntries(
+        ['UserPromptSubmit', 'Stop', 'SessionEnd'].map((event) => [
+          event,
+          [{ hooks: [httpHook(port, 'x-env-unlisted', 'http', false)] }],
+        ]),
+      ),
+    }),
+    steps: [
+      { kind: 'prompt', text: 'Reply with the single word ok.' },
+      { kind: 'sleep', ms: 25 * SECOND },
+      { kind: 'exit' },
+    ],
+  },
+  {
+    // E3 baseline: every event through the relay; PreToolUse also to the probe, answered at once.
+    name: 'x-block-base',
+    channel: 'relay',
+    timings: true,
+    probe: { delayMs: 0 },
+    settings: (port) => {
+      const hooks = relayEverywhere(port, 'x-block-base');
+      hooks.PreToolUse = [
+        ...(hooks.PreToolUse ?? []),
+        { hooks: [httpHook(port, 'x-block-base', PROBE_CHANNEL)] },
+      ];
+      return { hooks };
+    },
+    steps: [...turn(READ_PROMPT), { kind: 'exit' }],
+  },
+  {
+    // E3: the same, but the probe answers PreToolUse 4 s late. A later PostToolUse means blocking.
+    name: 'x-block-slow',
+    channel: 'relay',
+    timings: true,
+    probe: { delayMs: 4 * SECOND },
+    settings: (port) => {
+      const hooks = relayEverywhere(port, 'x-block-slow');
+      hooks.PreToolUse = [
+        ...(hooks.PreToolUse ?? []),
+        { hooks: [httpHook(port, 'x-block-slow', PROBE_CHANNEL)] },
+      ];
+      return { hooks };
+    },
+    steps: [...turn(READ_PROMPT), { kind: 'exit' }],
+  },
+  {
+    // E4: PreToolUse http hooks to a closed port and to a probe answering 500. If PostToolUse
+    // still arrives (via the relay), a failing HTTP hook doesn't stop the tool.
+    name: 'x-fail-open',
+    channel: 'relay',
+    timings: true,
+    probe: { status: 500 },
+    settings: (port) => {
+      const hooks = relayEverywhere(port, 'x-fail-open');
+      // No token header: anything that happened to listen on the "closed" port would receive it.
+      const closed = {
+        type: 'http',
+        url: 'http://127.0.0.1:9/hooks',
+        timeout: HTTP_TIMEOUT_SECONDS,
+      };
+      hooks.PreToolUse = [
+        ...(hooks.PreToolUse ?? []),
+        { hooks: [closed, httpHook(port, 'x-fail-open', PROBE_CHANNEL)] },
+      ];
+      return { hooks };
+    },
+    steps: [...turn(READ_PROMPT), { kind: 'exit' }],
+  },
 ];
 
 export const SCENARIOS: Scenario[] = [
@@ -273,6 +393,14 @@ async function runScenario(
   const notes: string[] = [];
   keepOldCapture(scenario.name);
   const target = freshTarget(scenario.name);
+  if (scenario.projectSettings !== undefined) {
+    const dir = path.join(target, '.claude');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, 'settings.json'),
+      `${JSON.stringify(scenario.projectSettings(port), null, 2)}\n`,
+    );
+  }
 
   // Write this scenario's settings for the port the sink really listens on, so a stale file or a
   // different SPIKE_SINK_PORT can't send the hooks nowhere.
@@ -280,7 +408,7 @@ async function runScenario(
   const settings = path.join(SETTINGS_DIR, `${scenario.name}.${scenario.channel}.json`);
   writeFileSync(
     settings,
-    `${JSON.stringify(buildSettings({ scenario: scenario.name, channel: scenario.channel, port }), null, 2)}\n`,
+    `${JSON.stringify(scenario.settings?.(port) ?? buildSettings({ scenario: scenario.name, channel: scenario.channel, port }), null, 2)}\n`,
   );
   const pty = spawn(binary, ['--settings', settings, ...(scenario.args ?? [])], {
     name: 'xterm-256color',
@@ -499,6 +627,16 @@ async function runScenario(
   return { ok, notes, events };
 }
 
+function summarizeTimed(events: CaptureEvent[]): string {
+  const start = events[0]?.receivedAt ?? 0;
+  return events
+    .map((e) => {
+      const name = e.toolName === undefined ? e.hookEventName : `${e.hookEventName}(${e.toolName})`;
+      return `+${((e.receivedAt - start) / SECOND).toFixed(2)}s ${name} [${e.channel}]`;
+    })
+    .join('\n          ');
+}
+
 function summarize(events: CaptureEvent[]): string {
   return events
     .map((e) => (e.toolName === undefined ? e.hookEventName : `${e.hookEventName}(${e.toolName})`))
@@ -506,12 +644,19 @@ function summarize(events: CaptureEvent[]): string {
 }
 
 async function main(argv: string[]): Promise<number> {
+  // Recordings run by default; the task 1.3 experiments only by name or with --experiments.
+  const all = [...SCENARIOS, ...EXPERIMENTS];
   if (argv.includes('--list')) {
-    for (const s of SCENARIOS) console.log(`${s.name} (${s.channel})`);
+    for (const s of all) console.log(`${s.name} (${s.channel})`);
     return 0;
   }
-  const wanted = argv.length === 0 ? SCENARIOS : SCENARIOS.filter((s) => argv.includes(s.name));
-  const unknown = argv.filter((a) => !SCENARIOS.some((s) => s.name === a));
+  const names = argv.filter((a) => a !== '--experiments');
+  const wanted = argv.includes('--experiments')
+    ? EXPERIMENTS
+    : names.length === 0
+      ? SCENARIOS
+      : all.filter((s) => names.includes(s.name));
+  const unknown = names.filter((a) => !all.some((s) => s.name === a));
   if (unknown.length > 0) {
     console.error(`unknown scenario(s): ${unknown.join(', ')} (see --list)`);
     return 2;
@@ -528,6 +673,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const port = sinkPort();
+  let currentProbe: Scenario['probe'];
   const token = randomBytes(24).toString('base64url');
   const listeners = new Set<(e: CaptureEvent) => void>();
   const server = await startSink({
@@ -541,6 +687,7 @@ async function main(argv: string[]): Promise<number> {
     onCapture: (event) => {
       for (const listener of listeners) listener(event);
     },
+    probeReply: () => currentProbe,
   });
   const url = `http://${SINK_HOST}:${port}`;
   const subscribe = (fn: (e: CaptureEvent) => void) => {
@@ -553,12 +700,14 @@ async function main(argv: string[]): Promise<number> {
     for (const scenario of wanted) {
       const started = Date.now();
       console.log(`\n[${scenario.name}] (${scenario.channel}) starting`);
+      currentProbe = scenario.probe;
       const result = await runScenario(scenario, resolved.path, port, url, token, subscribe);
       const seconds = Math.round((Date.now() - started) / SECOND);
       console.log(
         `[${scenario.name}] ${result.ok ? 'OK' : 'INCOMPLETE'} in ${seconds}s, ${result.events.length} event(s)`,
       );
       console.log(`  events: ${summarize(result.events) || '(none)'}`);
+      if (scenario.timings) console.log(`  timings: ${summarizeTimed(result.events)}`);
       for (const note of result.notes) console.log(`  note: ${note}`);
       if (!result.ok) failures++;
     }

@@ -5,7 +5,8 @@
 //   npm run spike:sink
 //
 // Loopback only (hard rule 3). Every request needs the bearer token printed at startup. The reply
-// is always an empty 200, so a capture can never be read as a hook decision. Payloads are not
+// body is always empty, so a capture can never be read as a hook decision; it's an immediate 200,
+// except on the task 1.3 `probe` channel, where an experiment can delay it or return an error. Payloads are not
 // logged to the console, and nothing here ever opens a payload's `transcript_path` (hard rule 1).
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -24,13 +25,22 @@ export interface SinkOptions {
   log?: (line: string) => void;
   /** Called after each capture is written, with only what a driver needs to react (drive.ts). */
   onCapture?: (event: CaptureEvent) => void;
+  /**
+   * How to reply to a capture on the `probe` channel (task 1.3 experiments): after a delay and/or
+   * with a status other than 200. Other channels always get an immediate empty 200.
+   */
+  probeReply?: () => { delayMs?: number; status?: number } | undefined;
 }
+
+/** The experiment channel: like `http`, but its reply can be delayed or fail (`probeReply`). */
+export const PROBE_CHANNEL = 'probe';
 
 export interface CaptureEvent {
   scenario: string;
   channel: string;
   hookEventName: string;
   toolName: string | undefined;
+  receivedAt: number;
 }
 
 export interface CaptureRecord {
@@ -115,7 +125,7 @@ export function startSink(options: SinkOptions): Promise<Server> {
     const scenario = url.searchParams.get('scenario');
     const channel = url.searchParams.get('channel');
     if (!isScenario(scenario)) throw new HttpError(400, 'bad scenario');
-    if (!isChannel(channel)) throw new HttpError(400, 'bad channel');
+    if (!isChannel(channel) && channel !== PROBE_CHANNEL) throw new HttpError(400, 'bad channel');
 
     const bytes = await readBody(req);
     const record: CaptureRecord = {
@@ -134,12 +144,15 @@ export function startSink(options: SinkOptions): Promise<Server> {
       channel,
       hookEventName: eventName(record.body),
       toolName: stringField(record.body, 'tool_name'),
+      receivedAt: record.receivedAt,
     });
 
     log(
       `${new Date(record.receivedAt).toISOString()} ${scenario} ${channel} ${eventName(record.body)} ${bytes.length}B`,
     );
-    res.writeHead(200).end();
+    const reply = channel === PROBE_CHANNEL ? options.probeReply?.() : undefined;
+    if (reply?.delayMs !== undefined) await new Promise((r) => setTimeout(r, reply.delayMs));
+    res.writeHead(reply?.status ?? 200).end();
   }
 
   const server = createServer((req, res) => {

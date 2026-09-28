@@ -11,6 +11,7 @@ Throwaway tooling for the Claude protocol spike ([PLAN §10, Phase 1](../../docs
 | `drive.ts` | `npm run spike:drive [-- <scenario>...]`: records the scenarios as real interactive sessions in node-pty, driven by the hook events the in-process sink receives. Writes each scenario's settings for the port it listens on (`SPIKE_SINK_PORT` or 47110) and gives each scenario a fresh scratch repo under `~/.micro-minds-dev/spike/targets/` (it never runs git in a repo a recorded agent has touched). Spends the user's tokens. |
 | `make-target.ts` | `npm run spike:target`: creates the scratch repo `~/micro-minds-spike-target` for recording by hand; `createTarget()` also builds the driver's per-scenario copies. |
 | `SCENARIOS.md` | What was recorded, the event sequences, and the findings for task 1.6. |
+| `SETTINGS.md` | Task 1.3: settings merging, HTTP hooks, blocking and failure behaviour, and the token in the header (the `x-*` experiments, `npm run spike:drive -- --experiments`). |
 | `paths.ts` | Shared paths, port and scenario-name rules. |
 
 ## Recording a scenario
