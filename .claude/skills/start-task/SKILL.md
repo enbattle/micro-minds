@@ -28,7 +28,7 @@ Uncommitted changes (`git status --short`; nothing listed means clean):
    - No match: say so, list the ids of the phase the user probably meant, and **stop**. Post-MVP phases (4b and later) have no task ids; they need a scoping pass first (PLAN §10).
    - Ticked (`[x]`): say the task is done and point to `/phase-status`. **Stop.**
 3. Earlier work: list any unchecked tasks that come before `$id` in the same phase, and any unchecked tasks in earlier phases. If there are any, say PLAN §14.1 is one task at a time and in order, note whether §14.4 (independent tasks, no shared files) could justify it, and **ask whether to proceed out of order. Stop** until the user answers.
-4. Preconditions in the task text: if the task is conditional (for example 2.10 "Only if 1.4 chose the relay"), find the deciding ADR in `docs/decisions/`. If the condition is unmet or undecided, say so and **stop**.
+4. Preconditions in the task text: if the task is conditional (for example "Only if 1.4 chose the relay", as task 2.10 was), find the deciding ADR in `docs/decisions/`. If the condition is unmet or undecided, say so and **stop**.
 
 ## 2. Branch
 

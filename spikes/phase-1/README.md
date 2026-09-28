@@ -8,9 +8,22 @@ Throwaway tooling for the Claude protocol spike ([PLAN §10, Phase 1](../../docs
 | `relay.ts` | Command-hook path into the sink. Fails open: always exits 0, never writes to stdout, 500 ms POST timeout. |
 | `settings.ts` | Writes `~/.micro-minds-dev/spike/settings/<s>.<channel>.json` (hooks only) for `claude --settings`. |
 | `relay-selftest.ts` | Checks both channels, the token and Host checks and the fail-open rules against a temporary sink. No `claude` involved. |
+| `drive.ts` | `npm run spike:drive [-- <scenario>...]`: records the scenarios as real interactive sessions in node-pty, driven by the hook events the in-process sink receives. Writes each scenario's settings for the port it listens on (`SPIKE_SINK_PORT` or 47110) and gives each scenario a fresh scratch repo under `~/.micro-minds-dev/spike/targets/` (it never runs git in a repo a recorded agent has touched). Spends the user's tokens. |
+| `make-target.ts` | `npm run spike:target`: creates the scratch repo `~/micro-minds-spike-target` for recording by hand; `createTarget()` also builds the driver's per-scenario copies. |
+| `SCENARIOS.md` | What was recorded, the event sequences, and the findings for task 1.6. |
+| `latency.ts` | `npm run spike:latency [-- <runs>]`: task 1.4, the cost of a relay run (direct, via `cmd /c`, sink down) and of an HTTP hook's loopback POST. Every run is checked to have reached the sink. No `claude` runs. |
+| `statusline.ts` | Task 1.8: the status-line command the telemetry runs put in their `--settings`; records its stdin JSON to `captures/statusline-<scenario>.jsonl`. |
+| `TELEMETRY.md` | Task 1.8: usage telemetry (OpenTelemetry and the status line), the `t-*` runs (`npm run spike:drive -- --telemetry`, or by name; `-- --user-telemetry` prints the user-settings entry for `t-user-*`). |
+| `scrub.ts` | `npm run spike:scrub`: tasks 1.7 and 1.8, turns the captures into `fixtures/claude/*.jsonl` (the `record-fixture` skill, steps 1–2: payload bodies only, placeholders for paths, the host, the owner's name from `git config user.name`, the user, emails and ids, in values and keys, with long text trimmed). It doesn't decode base64 or catch every secret shape, so the output must still pass the skill's step 4 checks before it's committed. |
+| `pty-view.ts` | `npm run spike:pty-view [-- --shell]`: task 1.5, `claude` (or a shell) in node-pty in a throwaway worktree, shown in xterm.js on a local page behind a random token. |
+| `PTY-VIEW.md` | Task 1.5: login, colors, resize and alternate-screen results. |
+| `SETTINGS.md` | Task 1.3: settings merging, HTTP hooks, blocking and failure behaviour, and the token in the header (the `x-*` experiments, `npm run spike:drive -- --experiments`). |
 | `paths.ts` | Shared paths, port and scenario-name rules. |
 
 ## Recording a scenario
+
+With the user's OK, `npm run spike:drive` records every scenario (see `SCENARIOS.md`). To record one
+by hand instead:
 
 1. **Start the sink** in one terminal: `npm run spike:sink`. It prints a fresh token and the lines to set `MICROMINDS_URL` and `MICROMINDS_HOOK_TOKEN`. The default port is 47110 (`SPIKE_SINK_PORT` overrides it).
 2. **Generate settings**: `npm run spike:settings -- <scenario> --channel http` (or `relay`). Scenario names are lowercase letters, digits and dashes, for example `a-qa` or `f-subagent`.
@@ -22,5 +35,5 @@ Throwaway tooling for the Claude protocol spike ([PLAN §10, Phase 1](../../docs
 - Raw captures and settings stay under `~/.micro-minds-dev/spike/`. Only scrubbed copies go into `fixtures/claude/` (task 1.7, `record-fixture` skill).
 - Never open the file a payload's `transcript_path` points to (hard rule 1).
 - Never edit `~/.claude/settings.json` (hard rule 2). Everything goes through `--settings`.
-- The user runs every recorded `claude` session. Headless `claude -p` runs need the user's OK, because recordings spend tokens.
+- Every recording spends the user's tokens, so no `claude` session starts, interactive or headless (`claude -p`), without the user's OK. With it, `drive.ts` records the sessions itself (PLAN Phase 1, "Before you start"); otherwise the user runs them by hand, as in "Recording a scenario" above.
 - The sink token changes on every start unless `SPIKE_SINK_TOKEN` is set. Files generated with `--literal-token` contain the token and must be regenerated after a restart.

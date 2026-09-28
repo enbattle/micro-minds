@@ -1,0 +1,54 @@
+diff --git a/apps/server/src/providers/gemini/tools.test.ts b/apps/server/src/providers/gemini/tools.test.ts
+new file mode 100644
+index 0000000..a00d02b
+--- /dev/null
++++ b/apps/server/src/providers/gemini/tools.test.ts
+@@ -0,0 +1,21 @@
++import { describe, expect, it } from 'vitest';
++import { geminiToolCategory } from './tools.ts';
++
++describe('geminiToolCategory', () => {
++  it.each([
++    ['read_file', 'read'],
++    ['search_file_content', 'read'],
++    ['write_file', 'write'],
++    ['replace', 'write'],
++    ['run_shell_command', 'exec'],
++    ['google_web_search', 'web'],
++  ] as const)('maps %s to %s', (tool, category) => {
++    expect(geminiToolCategory(tool)).toBe(category);
++  });
++
++  it('maps unknown, MCP and prototype names to other', () => {
++    expect(geminiToolCategory('mcp__github__create_issue')).toBe('other');
++    expect(geminiToolCategory('toString')).toBe('other');
++    expect(geminiToolCategory('')).toBe('other');
++  });
++});
+diff --git a/apps/server/src/providers/gemini/tools.ts b/apps/server/src/providers/gemini/tools.ts
+new file mode 100644
+index 0000000..d35cceb
+--- /dev/null
++++ b/apps/server/src/providers/gemini/tools.ts
+@@ -0,0 +1,21 @@
++// Gemini CLI tool names → the cross-provider ToolCategory (PLAN §4.1). Written now, next to the
++// Claude mapping while it's fresh, so the Phase 5 Gemini adapter only has to wire up its hooks.
++import type { ToolCategory } from '@micro-minds/shared';
++
++const GEMINI_TOOLS: Readonly<Record<string, ToolCategory>> = {
++  read_file: 'read',
++  read_many_files: 'read',
++  list_directory: 'read',
++  glob: 'read',
++  search_file_content: 'read',
++  write_file: 'write',
++  replace: 'write',
++  run_shell_command: 'exec',
++  web_fetch: 'web',
++  google_web_search: 'web',
++};
++
++/** Unknown and MCP tools are `other`: never a throw (hard rule 7). */
++export function geminiToolCategory(toolName: string): ToolCategory {
++  return Object.hasOwn(GEMINI_TOOLS, toolName) ? (GEMINI_TOOLS[toolName] ?? 'other') : 'other';
++}

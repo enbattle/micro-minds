@@ -1,0 +1,5 @@
+{
+  "mustFind": ["CONV-import-extension"],
+  "mustNotFind": ["ARCH-shared-io", "CONV-erasable-syntax", "TEST-missing"],
+  "notes": "A pure usage-totals module for packages/shared, exported through index.ts, with a test. The new relative imports name './usage.js', with a comment claiming NodeNext resolution maps .js back to the .ts source. Under D23 Node runs the .ts files directly with no emit, so './usage.js' does not exist and the import fails at runtime; relative imports must use '.ts' (the existing provider export in the same file does). Everything else holds: no I/O, no Date or randomness, no enum or other non-erasable syntax (Object.freeze and union types), type-only names imported with `type`, and a test that covers the one function and its immutability."
+}

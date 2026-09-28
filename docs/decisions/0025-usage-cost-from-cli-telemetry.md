@@ -1,6 +1,8 @@
 # 0025. Usage and cost come from the CLI's own telemetry
 
-- Status: Accepted
+- Status: Accepted. Settled by [0030](0030-claude-usage-over-otel-metrics.md): OpenTelemetry
+  metrics are the channel for Claude, the status line isn't used, and the metrics arrive as deltas,
+  so no cumulative→delta conversion is built.
 - Date: 2026-09-26
 - Plan: D25 (PLAN §2, §5.7)
 

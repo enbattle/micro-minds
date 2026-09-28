@@ -16,7 +16,8 @@ Reporting process: [SECURITY.md](../../SECURITY.md).
   confirm statuses, and add rows for anything new.
 
 Status legend: `designed` (specified, no code yet) · `planned: task N.M` (the task that builds or
-tests it) · `enforced by test` (a test exists today) · `gap` (not specified anywhere yet; see
+tests it) · `verified: task N.M` (a Phase 1 spike showed the mechanism works; the enforcing code is
+still planned) · `enforced by test` (a test exists today) · `gap` (not specified anywhere yet; see
 [Open gaps](#open-gaps)).
 
 ## Assets
@@ -27,7 +28,7 @@ tests it) · `enforced by test` (a test exists today) · `gap` (not specified an
 | User's repos and worktrees | Repo paths the user picks; `$MICROMINDS_HOME/worktrees/<slug>/<id>` | Source code, uncommitted work. Loss or tampering is the worst practical outcome. |
 | Hook and telemetry payloads | In flight to `/hooks`, `/otel/*`; stored `raw` in SQLite | Can contain file contents and secrets (a `tool_response` after reading `.env`). |
 | UI session cookie | Browser cookie jar (`HttpOnly`); bootstrap code briefly in the launch URL | Full control: create sessions, type into every PTY, remove worktrees. |
-| Hook tokens | Each session's PTY env (and possibly its settings file) | Post events and usage for one session. |
+| Hook tokens | Each session's PTY env only: the settings file's hook headers name the variable (ADR 0029), and the OTLP header is set in the PTY env (ADR 0030) | Post events and usage for one session. |
 | Local database and state | `$MICROMINDS_HOME` (`micro-minds.db`, `sessions/<id>/settings.json`, `server.lock`) | Event history, resume ids, scrubbed payloads. |
 | User's clipboard and terminal | Browser clipboard, xterm.js, the server console | Clipboard hijack, deceptive output, pasted-command attacks. |
 
@@ -93,7 +94,12 @@ E elevation of privilege.
 | S | Agent forges its own session's events (fake "done", hide a hand) | None possible; the hook token is in its env | ADR 0013 | accepted |
 | I | Unknown-session probing, error detail leaks | 404 with no body details | PLAN §9.6 | planned: task 2.9 |
 | I | Payload secrets stored or broadcast | Scrub `text`, `tool.summary`, `raw`; cap `raw`; strip `raw` from WS | ADR 0014; HR8 | planned: tasks 2.2, 2.9 |
-| I | Prompts or tool details in telemetry | Exporter prompt and tool-detail logging off; loopback endpoint only | PLAN §5.7; `SEC-telemetry-config` | planned: task 2.14 |
+| I | Prompts or tool details in telemetry | Exporter prompt and tool-detail logging off; logs exporter off; loopback endpoint only | PLAN §5.7; ADR 0030; `SEC-telemetry-config` | planned: task 2.14 (verified: task 1.8, prompt and response text arrive `<REDACTED>`) |
+| I | Account identifiers in telemetry (`user.email`, `user.id`, `organization.id` on every metric point) stored or logged | Ingest reads only value, model, type, query source and agent type; account attributes dropped before storage or logs; no telemetry `raw` | ADR 0030 | planned: task 2.14 |
+| T | A user's own settings redirect or break the session's telemetry | Telemetry config in the per-session settings file, which outranks user settings (verified with the generic endpoint variable; inferred for the per-signal one ADR 0030 uses); if a user's own OTLP headers replace ours, the result is 401s, shown as usage unavailable (expected, not recorded) | ADR 0030 | verified: task 1.8 (generic endpoint); designed (per-signal endpoint, headers) |
+| I | A user's own collector credentials (their OTLP headers) arrive at `/otel` and are stored or logged | Header values of any request, rejected or not, are never logged or stored; 401 without details | ADR 0030 | planned: task 2.14 |
+| S | Session A's hook token is accepted on session B's `/otel` route | The route names the session (`/otel/<sessionId>/v1/metrics`); the token is compared against that session's token only | ADR 0030; HR4 | planned: task 2.14 |
+| I | Managed settings set only a metrics endpoint, so the process-env OTLP header sends the session's hook token to that collector | The token only posts to that session's loopback ingest (D13) and dies with the session | ADR 0030 | accepted |
 | T | Forged usage inflates cost or totals | Per-session only; usage never affects health; cost labelled `≈` | ADR 0025 | accepted |
 | D | Event floods, huge bodies, unbounded metric series | Body limit, zod on used fields only, per-session rate limit, unknown metrics ignored | PLAN §5.7, §9.6 | planned: tasks 2.7, 2.14 |
 | E | Crafted payload crashes ingest or reducer | Unknown → `kind: 'unknown'`, never throw; zod at boundary | HR7 | planned: task 2.4 |
@@ -139,24 +145,27 @@ end up printed verbatim.
 | T | Symlink or junction tricks make "Remove worktree" delete outside the root | Resolve real paths; require a registered worktree (`git worktree list`); remove via `git worktree remove`, never a recursive delete that follows links | HR11; `SEC-worktree-removal` | planned: task 2.5 |
 | T | Removal destroys uncommitted or unpushed work | Explicit confirmed action with dirty and unpushed warnings | PLAN §5.5; HR11 | planned: tasks 2.5, 3.8 |
 | E | Hostile repo's git config (`core.fsmonitor`, `core.hooksPath`) runs code when we run `git` | Argv only, `--` before paths, `-c core.fsmonitor=false`, empty hooks path | `SEC-worktree-removal` | planned: task 2.5 |
-| E | Our injected settings widen a hostile repo's power | Per-session file holds only hooks and env; no permission allows, no permission-skip flags; outside the worktree | PLAN §5.2; HR2 | planned: task 1.3 |
+| E | Our injected settings widen a hostile repo's power | Per-session file holds only hooks and env; no permission allows, no permission-skip flags; outside the worktree | PLAN §5.2; HR2; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (settings merge with project hooks; the file holds hooks only); planned: task 2.6 |
 
 ### Event store and local data (B3)
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
 | I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7 | planned: tasks 2.2, 2.7 |
-| I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6 | planned: task 1.3 (verify), 2.6 |
+| I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (the header reads the token only through `allowedEnvVars`); planned: task 2.6 |
 | I | Tokens or `raw` in logs; log injection via agent text | Never log tokens or `raw`; pino JSON escapes control characters | HR8; `SEC-token-exposure` | planned: task 2.7 |
 | T | Corrupt DB bricks startup | Move aside and start fresh | PLAN §5.6 | planned: task 2.11 |
 
-### Hook relay (only if task 1.4 picks it)
+### Hook relay (only for CLIs without native HTTP hooks)
+
+Task 1.4 chose native HTTP hooks for Claude (ADR 0029), so the relay is unused in the MVP. These
+rows apply if Phase 5 registers it for Gemini or Codex.
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
-| E | Relay output alters the CLI's decision | Exit 0, print nothing to stdout, 300–500 ms timeout | HR5, ADR 0009 | planned: task 2.10 |
-| I | Changed `MICROMINDS_URL` sends payloads and token off-box | Relay posts only to a loopback URL | HR5 | planned: task 2.10 |
-| D | Huge stdin payload | Cap bytes read; server body limit | PLAN §9.6 | planned: task 2.10 |
+| E | Relay output alters the CLI's decision | Exit 0, print nothing to stdout, 300–500 ms timeout | HR5, ADR 0009 | planned: Phase 5, if a CLI needs the relay (D29) |
+| I | Changed `MICROMINDS_URL` sends payloads and token off-box | Relay posts only to a loopback URL | HR5 | planned: Phase 5, if a CLI needs the relay (D29) |
+| D | Huge stdin payload | Cap bytes read; server body limit | PLAN §9.6 | planned: Phase 5, if a CLI needs the relay (D29) |
 
 ### Dev harness (Claude Code working on this repo)
 
@@ -189,4 +198,4 @@ end up printed verbatim.
 None right now. The six gaps found in the first pass (2026-09-27) each became an ADR or a
 PLAN acceptance item: UI authentication (ADR 0026, task 2.9), hook tokens kept out of settings
 files (1.3), safe worktree removal and git hardening (2.5), headless xterm query replies (2.6),
-and a loopback-only relay (2.10). New gaps go here with a `gap` status in the tables above.
+and a loopback-only relay (Phase 5, only if a CLI needs it; D29). New gaps go here with a `gap` status in the tables above.

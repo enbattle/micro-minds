@@ -1,29 +1,5 @@
 {
   "$comment": "Reviewer rules without a planted eval case yet, each due with the PLAN task that first writes the code it governs. CI fails if a due task is ticked while its rule is still listed (coverage.test.ts). Remove an entry in the same PR that adds its case. See evals/harness/README.md#growing-the-harness.",
-  "CONV-import-extension": {
-    "due": "1.8",
-    "why": "General convention; code exists since Phase 0, so cover it by the end of Phase 1"
-  },
-  "CONV-undeclared-dependency": {
-    "due": "1.8",
-    "why": "General convention; code exists since Phase 0, so cover it by the end of Phase 1"
-  },
-  "WIN-posix-shell": {
-    "due": "1.8",
-    "why": "Scripts and hooks already exist; cover it by the end of Phase 1"
-  },
-  "ARCH-missing-adr": {
-    "due": "1.8",
-    "why": "Phase 1 closes its verify items as ADRs"
-  },
-  "ARCH-scope-creep": {
-    "due": "1.8",
-    "why": "General; Phase 1 spike code is the first place scope creep is likely"
-  },
-  "HR5-hook-fail-open": {
-    "due": "1.4",
-    "why": "Relay latency and behavior are settled in task 1.4"
-  },
   "CONV-ids-timestamps": {
     "due": "2.1",
     "why": "Event schema with ULIDs and server timestamps"

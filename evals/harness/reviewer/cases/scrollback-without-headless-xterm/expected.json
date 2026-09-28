@@ -1,0 +1,5 @@
+{
+  "mustFind": ["ARCH-missing-adr"],
+  "mustNotFind": ["CONV-erasable-syntax", "CONV-import-extension", "WIN-path-concat"],
+  "notes": "Server-side scrollback for reconnecting tabs as a bounded buffer of raw PTY output, with a rationale (a second terminal emulator per session is heavy). That replaces PLAN §2 D16 ('terminal scrollback is kept by a headless xterm on the server', chosen so a reconnect repaints correctly), so it needs an ADR in docs/decisions/ and a D16 update, and the diff has neither. The byte-level trim can also cut an escape sequence or a UTF-8 character, which is part of why D16 chose a serializing emulator; a reviewer may report that as well. Everything else is conventional: a closure instead of a class with parameter properties, relative imports with '.ts', no path handling, and tests that cover every branch."
+}

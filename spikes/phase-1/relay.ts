@@ -1,6 +1,6 @@
 // Phase 1 spike relay (task 1.1): the command-hook path into the capture sink, so task 1.4 can
 // compare it with the native HTTP hook. Throwaway; the production relay is packages/hook-relay
-// (task 2.10, only if 1.4 picks the relay).
+// (not used for Claude: task 1.4 chose native HTTP hooks, ADR 0029).
 //
 //   node spikes/phase-1/relay.ts <scenario>     (run by Claude Code as a command hook)
 //

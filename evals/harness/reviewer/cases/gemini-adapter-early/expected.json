@@ -1,0 +1,5 @@
+{
+  "mustFind": ["ARCH-scope-creep"],
+  "mustNotFind": ["ARCH-provider-leak", "HR7-unknown-event-throws", "TEST-missing"],
+  "notes": "A small, correct Gemini CLI tool-name → ToolCategory map with tests, justified as 'written now while the Claude mapping is fresh'. Gemini is Phase 5 (D10, PLAN §10), and no Claude adapter exists yet (task 2.4), so this is later-phase work built early: out of scope for any current task. Everything else holds: it lives under apps/server/src/providers/gemini/ as provider-specific code must, unknown and prototype-named tools map to 'other' instead of throwing, and the tests cover every branch."
+}

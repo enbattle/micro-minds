@@ -52,15 +52,17 @@ Core experience:
 | D17 | **Biome for lint and format, `tsc --noEmit` for types** | One fast tool, easy to call from a formatter hook. Add typescript-eslint later only if Biome misses a rule we need (for example floating promises). | Phase 2 review |
 | D18 | **npm workspaces** (not pnpm) | Simplicity: no extra tool to install. npm doesn't stop a package importing a dependency it never declared, so Biome's `noUndeclaredDependencies` rule, a committed lockfile, `npm ci` in CI and `engine-strict` cover that gap. | If install or hoisting problems appear |
 | D19 | **The app watches orchestration; it doesn't drive it** | Claude Code already routes subagent questions through the parent session. micro-minds visualizes that (hands on the right character, child→parent lines). Orchestrator behavior is steered with CLAUDE.md or agent prompts, not app code. Any routing done by the app is Phase 6/9. | Phase 9 |
-| D20 | **Lightweight resume is in the MVP** | Server restarts (including `npm run dev` watch restarts) kill every PTY. Capture Claude's `session_id` from the `SessionStart` hook payload (never from `~/.claude`) and relaunch with `claude --resume <id>` in the same worktree. | If a separate PTY-owning process is needed (agents outliving the server) |
+| D20 | **Lightweight resume is in the MVP** | Server restarts (including `npm run dev` watch restarts) kill every PTY. Capture Claude's `session_id` from the first hook payload that carries one (never from `~/.claude`; `SessionStart` doesn't reach HTTP hooks, D29) and relaunch with `claude --resume <id>` in the same worktree. | If a separate PTY-owning process is needed (agents outliving the server) |
 | D21 | **Graceful shutdown with a warning** | Stopping the server with live agents asks for confirmation, then interrupts each CLI, waits a grace period, and kills the process tree. Worktrees are kept and sessions stay resumable. Nothing is deleted automatically. | — |
 | D22 | **Mood is derived and pure** | `mood(agent)` is a pure selector in `packages/shared`, fully tested. The scene only renders it. Working and idle are always visibly different. | Phase 4b |
 | D23 | **Node runs TypeScript directly (native type stripping); only the web app has a build step** | Node 24 strips types natively, so there is no `tsc` emit, `tsx` or build output for server, shared or relay code. This requires `erasableSyntaxOnly` (no enums or namespaces) and `.ts` import extensions. `tsc --noEmit` (TypeScript 7) is used for type checking only. | If a published package ever needs emitted JS |
 | D24 | **The dev-harness guard exempts Claude Code working files under `~/.claude`** | Plan mode, auto-memory and large tool outputs live in `~/.claude/plans/` and `~/.claude/projects/<slug>/{memory,tool-results}/`; blocking them broke those features without protecting any secret. Only literal paths qualify; credentials, settings and transcripts stay blocked. It applies to the dev harness only, never app code. See `docs/dev-harness.md`. | When Claude Code moves these directories |
-| D25 | **Usage and cost come from the CLI's own telemetry; capture and basic totals are MVP, the full panel is Phase 6** | Claude Code (and later Gemini/Codex) exports token and cost metrics over OpenTelemetry, which we point at our own localhost endpoint per session. That needs no transcript reading (hard rule 1) and no price table of our own. Cost is shown as **API-equivalent (≈)**, not as the user's bill: subscription plans are limited by usage windows, which these channels don't report. | Phase 1 spike verdict; Phase 6 |
+| D25 | **Usage and cost come from the CLI's own telemetry; capture and basic totals are MVP, the full panel is Phase 6** | Claude Code (and later Gemini/Codex) exports token and cost metrics over OpenTelemetry, which we point at our own localhost endpoint per session. That needs no transcript reading (hard rule 1) and no price table of our own. Cost is shown as **API-equivalent (≈)**, not as the user's bill: subscription plans are limited by usage windows, which OpenTelemetry doesn't report (the status line's `rate_limits` do, unused in the MVP, D30). | Phase 6 |
 | D26 | **The browser authenticates with a one-time bootstrap code exchanged for an HttpOnly session cookie** | An embedded UI token (v1 of D13) could be read by any local process with a plain `GET /`, including a prompt-injected agent, which could then drive every PTY. The code travels in a URL fragment to the launched browser only, is single-use with a 60 s TTL, and becomes an `HttpOnly`, `SameSite=Strict` cookie. Served HTML holds no secret. See ADR 0026. | A native wrapper (Phase 8) offers a better channel |
 | D27 | **Claude pushes task and phase branches; merges stay human** | Server-side rulesets already stop any push from changing `main`, so blocking all pushes only cost a hand-off per task. The merge is the one step where a human looks at the change (the reviewer is a model too), so Claude never merges. `/run-phase` runs a whole phase on one branch with one PR. See ADR 0027. | MVP complete (4a): per-task PRs become the default again; a second human reviewer; a bad push; a phase PR too large to review |
 | D28 | **Tests by a separate writer, locked; adversarial, independent review** | One context planning, testing, implementing and briefing its own reviewer grades itself. A fresh `test-writer` writes failing tests from the task text only; they are committed and locked (`scripts/tests-locked.ts`); the implementer never edits them. A fresh reviewer with artifact-only input tries to break the change, re-runs the checks, and shows what it probed; a security pass follows where the threat model or the reviewer says so. See ADR 0028. | Evals show planted defects slipping past the test writer or reviewer, or the lock blocking legitimate work |
+| D29 | **Claude's hook events arrive over native HTTP hooks, not the relay** | Measured on Windows (Phase 1): an HTTP hook costs about 1–4 ms, a synchronous relay about 110 ms per hook (a Node start), at least twice per tool call; HTTP hooks fail open and read the token from the environment. They never receive `SessionStart`, so `session.started` comes from the PTY spawn and the resume id from the first hook. The ingest checks size, session and token first (404/401, PLAN §9.6), then replies at once, and parses, stores and reduces after the reply; hooks use a 1 s timeout. See ADR 0029. | A Claude Code release adds `SessionStart` or `async` for HTTP hooks; Phase 5 for other CLIs |
+| D30 | **Claude's usage comes from OpenTelemetry metrics, configured through the per-session settings** | Recorded in Phase 1: delta cost and token sums per model and `query_source`, equal to the per-request costs; the status line is cumulative only, has no model split and lags. The per-session settings file's `env` outranks the user's own settings (the process env doesn't), so it carries the endpoint (which names micro-minds' session) and switches; the token header stays in the PTY env only, and header values are never logged or stored. Ingest keeps only value, model, type, query source and agent type, and drops account attributes. Subagents have a type but no id, so usage is per session and model. See ADR 0030. | Claude adds an agent id to its metrics; metric names, temporality or settings precedence change; Phase 5 for other CLIs |
 
 Each decision gets a short ADR in `docs/decisions/NNNN-title.md`. Record new decisions the same way.
 
@@ -178,7 +180,7 @@ Rules:
 - **Adapters set facts (`kind`, `tool.category`, `errorClass`). They never set severity or health.** Severity and health are *derived state*: they depend on history (for example "3 failures in 5 minutes"), so they're computed in the reducer using `severity.ts` rules.
 - **Tool categories are the cross-provider contract.** Each adapter maps its own tool names (`Read`, `read_file`, `shell`…) to a `ToolCategory`. The reducer and UI only ever see categories. That keeps adding a provider cheap (D10).
 - **Unknown payloads become `kind: 'unknown'` with `raw` kept.** Never throw.
-- **Usage events are deltas.** The ingest layer converts cumulative counters to deltas before they become events, so the reducer only ever adds. Cost is always the CLI's number, never derived from a price table.
+- **Usage events are deltas.** Claude's metrics arrive as deltas (D30), and any other source is converted before it becomes an event, so the reducer only ever adds. Cost is always the CLI's number, never derived from a price table.
 
 ### 4.2 Derived state (pure reducer)
 
@@ -252,12 +254,12 @@ The server holds the authoritative state. Clients receive a snapshot, then live 
 
 In order of preference, per provider:
 
-1. **Native HTTP hook**, if the CLI supports it (Claude Code likely does: `type: "http"`; **verify in Phase 1**). The CLI POSTs straight to `/hooks`, so there's no process spawned per tool call. Mark it async/non-blocking if the CLI supports that.
+1. **Native HTTP hook**, if the CLI supports it. **Claude Code does (D29):** `type: "http"`, verified in Phase 1. The CLI POSTs straight to `/hooks`, so there's no process spawned per tool call. HTTP hooks can't be async: the CLI waits for the reply, so `/hooks` checks size, session and token (§9.6), then answers at once, before parsing or storing the event, and each hook has a 1 s timeout. They fail open on a refused connection or an error status.
 2. **Relay executable** (`packages/hook-relay`), for providers that can only run a command:
    - Reads the JSON payload from stdin and `MICROMINDS_URL`, `MICROMINDS_SESSION_ID`, `MICROMINDS_HOOK_TOKEN` and `MICROMINDS_PROVIDER` from the environment.
    - POSTs to `/hooks` with a hard timeout of 300–500 ms.
    - **Always exits 0 and writes nothing to stdout.** If the env vars are missing, it exits immediately.
-   - Windows: ships a `.cmd` shim. Measure startup cost on Windows specifically, because Node's cold start is slower there.
+   - Windows: ships a `.cmd` shim. Measured in Phase 1: about 110 ms per run started directly, about 126 ms through `cmd /c` (a Node cold start). `async: true` (where the CLI allows it) removes that wait, but then events may arrive out of order, and receipt time is the event timestamp; Phase 5 decides per CLI whether ordering can be restored (for example from a provider sequence field) before using it.
 
 ### 5.2 Injecting hooks without touching global config
 
@@ -265,23 +267,26 @@ Never edit `~/.claude`, `~/.gemini` or `~/.codex`.
 
 | Provider | Mechanism | Status |
 |---|---|---|
-| Claude Code | Per-session settings file in `~/.micro-minds/sessions/<id>/settings.json`, passed with `claude --settings <file>`. Confirm it **merges** with user and project settings. | **Verify in Phase 1** |
+| Claude Code | Per-session settings file in `~/.micro-minds/sessions/<id>/settings.json`, passed with `claude --settings <file>`. It **merges** with user and project settings: their hooks and ours all fire (`docs/protocols/claude.md`). | Verified in Phase 1 |
 | Gemini CLI | Per-session settings/env | Phase 5 spike |
 | Codex CLI | Per-session config/profile/env | Phase 5 spike |
 
 Don't write injected settings into the worktree. If a worktree file turns out to be unavoidable, add it to `.git/info/exclude`.
 
-### 5.3 Claude Code event mapping (confirm against recorded fixtures)
+### 5.3 Claude Code event mapping (confirmed in Phase 1)
+
+Confirmed against the Phase 1 recordings with Claude Code 2.1.283. The payload fields, the tool
+categories, and the findings the adapter must handle are in `docs/protocols/claude.md`.
 
 | Claude hook | → AgentEvent |
 |---|---|
-| `SessionStart` / `SessionEnd` | `session.started` / `session.ended` |
+| `SessionStart` / `SessionEnd` | `session.started` / `session.ended`. `SessionStart` never reaches an HTTP hook (D29), so `session.started` comes from the PTY spawn. |
 | `UserPromptSubmit` | `prompt.submitted` |
 | `PreToolUse` | `tool.started`. `AskUserQuestion` → `attention.question`. `Task`/`Agent` → category `delegate`. |
-| `PostToolUse` / `PostToolUseFailure` | `tool.finished` / `tool.failed` |
-| `PermissionRequest` | `attention.permission` |
-| `Notification` | `attention.permission` or `attention.idle`, depending on type (verify field names) |
-| `SubagentStart` / `SubagentStop` | `agent.spawned` / `agent.finished` (`agent_id`, `agent_type`) |
+| `PostToolUse` / `PostToolUseFailure` | `tool.finished` / `tool.failed`. A shell command that exits non-zero is a `PostToolUseFailure`. |
+| `PermissionRequest` | `attention.permission`; for `AskUserQuestion` (its question dialog), `attention.question` |
+| `Notification` | By `notification_type`: `idle_prompt` → `attention.idle`, `elicitation_dialog` → `attention.question`, anything else (including `permission_prompt`, which `PermissionRequest` already covers) → `unknown` |
+| `SubagentStart` / `SubagentStop` | `agent.spawned` / `agent.finished` (`agent_id`, `agent_type`). A `SubagentStop` for an agent that never started never creates or ends a visible subagent. |
 | `Stop` / `StopFailure` | `turn.finished` / `turn.failed` (+ `errorClass`) |
 | `PreCompact` | `context.compacting` |
 
@@ -335,21 +340,19 @@ Session record (SQLite): `status: 'running' | 'ended' | 'interrupted'`, `endReas
 
 ### 5.7 Usage and cost telemetry (D25)
 
-**Channels, in order of preference** (both **to verify in Phase 1**):
+**Channel (D30, verified in Phase 1): OpenTelemetry metrics only**, OTLP/HTTP JSON (no protobuf dependency). The status line was the fallback candidate; it's not used (session-cumulative only, no per-model split, it lags the last requests, and it would replace the user's own status line). One channel per session, so usage is never counted twice. Facts: `docs/protocols/claude.md`, "Usage telemetry"; decision: ADR 0030.
 
-1. **OpenTelemetry export.** Set per session in the PTY env: `CLAUDE_CODE_ENABLE_TELEMETRY=1`, the OTLP metrics (and, if needed, logs) exporter, protocol `http/json` (no protobuf dependency), endpoint `http://127.0.0.1:<port>/otel`, and the session's hook token in `OTEL_EXPORTER_OTLP_HEADERS`. Explicitly keep prompt and tool-detail logging off. Expected data: token counts by type and cost, per model. Gemini CLI and Codex also export OpenTelemetry, so Phase 5 reuses this path.
-2. **Status-line payload** (fallback). Claude Code passes the status-line command JSON that includes total cost. The downside: injecting our status line replaces the user's own in micro-minds sessions.
+- **Injection:** the per-session settings file's `env` block, which outranks the user's own settings (the process env doesn't): `CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_METRICS_EXPORTER=otlp`, `OTEL_LOGS_EXPORTER=none`, `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL=http/json`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (`http://127.0.0.1:<port>/otel/<sessionId>/v1/metrics`, naming micro-minds' session: an export carries no other id the server can check before parsing), `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta`, `OTEL_METRIC_EXPORT_INTERVAL=5000`, `OTEL_METRICS_INCLUDE_ACCOUNT_UUID=false`. Prompt and tool-detail logging stay off (their defaults). Gemini CLI and Codex also export OpenTelemetry, so Phase 5 reuses this path.
+- **Token:** only in the PTY env, `OTEL_EXPORTER_OTLP_METRICS_HEADERS=Authorization=Bearer <hook token>`, never in the settings file. Not recorded: a user's settings that set OTLP headers of their own. If theirs replace ours, ingest answers 401 and that session's usage shows as unavailable; either way their headers may reach `/otel`, so header values are never logged or stored.
 
-Pick **one channel per session** so usage is never counted twice. Record the verdict in `docs/protocols/claude.md` and an ADR.
+**Ingest:** `POST /otel/<sessionId>/v1/metrics`. It uses the same protections as `/hooks`, in D29's order: body-size limit, the route's session (404 if unknown), the hook token compared in constant time against that session's token only (D13, 401 without details), then the early reply; then zod parsing of only the fields we use, and unknown metrics ignored. No request header value is ever logged or stored, rejected or not. It reads only `claude_code.cost.usage` and `claude_code.token.usage` points and, from them, only the value, `model`, `type`, `query_source` and `agent.name`; account attributes (`user.email`, `user.id`, `organization.id`) are dropped before anything is stored or logged, and no `raw` is kept. The points are **deltas** (the default, and set explicitly), so each becomes one `usage.recorded` event with no conversion state; a cumulative series is ignored and logged once.
 
-**Ingest:** `POST /otel/v1/metrics` (and `/v1/logs` only if the spike shows it's needed). It uses the same protections as `/hooks`: per-session hook token (D13), body-size limit, zod parsing of only the fields we use, and unknown metrics ignored. The server converts cumulative counters to deltas (it keeps the last value per series, which is ingest state, not reducer state) and emits `usage.recorded` events.
-
-**Attribution:** per session and per model always. Per subagent only if the telemetry carries an agent identifier; the spike tells us.
+**Attribution:** per session and per model always. Not per subagent: subagent usage carries its type (`agent.name`) but no agent id, so the root agent's totals include subagents and auxiliary calls. A per-type breakdown is for the Phase 6 usage panel.
 
 **Presentation rules:**
 
 - Cost is always labelled API-equivalent (`≈ $4.20`), with a tooltip explaining that subscription plans aren't billed per token.
-- Usage limits aren't observable here. Hitting one still surfaces as `errorClass: 'rate_limit' | 'budget'` → red (§6).
+- Usage limits aren't observable through this channel (the status line carries `rate_limits`, unused in the MVP). Hitting one still surfaces as `errorClass: 'rate_limit' | 'budget'` → red (§6).
 - Usage capture can be switched off in config. When it's off, the board shows no usage rather than zeros.
 - **Side effect to disclose:** sessions started by micro-minds export telemetry to micro-minds, so a personal OpenTelemetry collector the user has configured won't receive data from those sessions.
 
@@ -479,22 +482,22 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 **Before you start (read once):**
 
-- **Human in the loop.** The Claude session driving Phase 1 builds the capture sink and the per-scenario settings files, then gives the user the exact command to run. **The user runs each recorded scenario** in a separate terminal and answers its prompts. The driving session never starts an interactive `claude` itself. Headless `claude -p` runs are fine for scenarios that need no interaction, but only with the user's OK, because every recording spends tokens (the subagent and compaction scenarios cost the most).
+- **Human in the loop.** The Claude session driving Phase 1 builds the capture sink and the per-scenario settings files, then gives the user the exact command to run. **The user runs each recorded scenario** in a separate terminal and answers its prompts, **or, with the user's OK, the driving session records them** as real interactive sessions through a PTY driver (`spikes/phase-1/drive.ts`), driven by the hook events rather than screen timing (the user chose this for 1.2). Either way, every recording spends the user's tokens (the subagent and compaction scenarios cost the most), so the driving session never starts `claude`, interactive or headless (`claude -p`), without that OK.
 - **Record in a scratch repo, never in micro-minds.** A session recorded inside this repo would also load its CLAUDE.md and fire its harness hooks (guard, format, session context), which would contaminate the fixtures. Create a small scratch git repo outside this one (for example `~/micro-minds-spike-target`), with a few source files and a script that fails, for scenario (c).
 - **Raw captures stay outside the repo.** Payloads contain real paths, usernames and `transcript_path`. The sink writes raw captures to `~/.micro-minds-dev/spike/captures/`, and only scrubbed copies (task 1.7, `record-fixture` skill) go into `fixtures/claude/`. Never open a file at `transcript_path` (hard rule 1). GitHub push protection is a backstop, not the process.
 - **Settings.** Per-scenario settings files go in `~/.micro-minds-dev/spike/` and are passed with `claude --settings <file>`. Never edit `~/.claude/settings.json` (hard rule 2). The sink binds to `127.0.0.1` only.
 - **Spike code** lives in `spikes/phase-1/`. It must pass `npm run check` (Biome and `tsc` apply), but it has no coverage threshold and no tests-first requirement. Phase 2 reimplements what it needs properly, and the PR that closes Phase 2 deletes `spikes/`.
 - **With `/run-phase 1`** (D27), the run stops at each step above that the user runs or checks (the recordings in 1.2, the manual checks in 1.3 and 1.5), with the exact commands ready, and resumes when it's run again.
-- **Eval cases due in this phase:** `/start-task` lists them. Currently `HR5-hook-fail-open` is due with 1.4, and five general rules are due with 1.8. The phase gate (§14.6) applies when 1.8 is ticked.
+- **Eval cases due in this phase:** `/start-task` lists them. `HR5-hook-fail-open` was due with 1.4 (added); five general rules are due with 1.8. The phase gate (§14.6) applies when 1.8 is ticked.
 
 - [x] 1.1 A capture sink (in `spikes/phase-1/`) that appends raw payloads to `~/.micro-minds-dev/spike/captures/<scenario>.jsonl` (outside the repo; scrubbed into `fixtures/claude/` in 1.7), fed by an HTTP hook and by the relay.
-- [ ] 1.2 Record scenarios: (a) Q&A, (b) read + edit, (c) failing shell command, (d) permission prompt, (e) AskUserQuestion, (f) subagent, (g) Ctrl-C, (h) process killed, (i) compaction if practical.
-- [ ] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
-- [ ] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
-- [ ] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
-- [ ] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
-- [ ] 1.7 Scrub the fixtures (paths, usernames, secrets) using the `record-fixture` skill.
-- [ ] 1.8 Usage telemetry spike (§5.7): enable OpenTelemetry export to a local capture endpoint and record the metric payloads (and the status-line JSON) for scenarios (a), (b) and (f). Confirm the metric names, units, cumulative vs delta, model and session attributes, whether subagents are distinguishable, and whether the user's own settings can override the env. Choose the channel and write an ADR.
+- [x] 1.2 Record scenarios: (a) Q&A, (b) read + edit, (c) failing shell command, (d) permission prompt, (e) AskUserQuestion, (f) subagent, (g) Ctrl-C, (h) process killed, (i) compaction if practical.
+- [x] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
+- [x] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
+- [x] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
+- [x] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
+- [x] 1.7 Scrub the fixtures (paths, usernames, secrets) using the `record-fixture` skill.
+- [x] 1.8 Usage telemetry spike (§5.7): enable OpenTelemetry export to a local capture endpoint and record the metric payloads (and the status-line JSON) for scenarios (a), (b) and (f). Confirm the metric names, units, cumulative vs delta, model and session attributes, whether subagents are distinguishable, and whether the user's own settings can override the env. Choose the channel and write an ADR.
 
 **Done when:** `docs/protocols/claude.md` is complete; there are at least 8 scrubbed fixture files; every Claude "verify" in §5 is closed or turned into an ADR; there's a usage-channel verdict with recorded telemetry fixtures.
 
@@ -511,11 +514,11 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [ ] 2.7 `HookIngest` + `EventStore` (SQLite, append-only, retention setting) + `Clock`. **Versioned, forward-only DB migrations**, each tested against a database created by the previous schema.
 - [ ] 2.8 WS server implementing §8, with a protocol version in `snapshot`, and cookie-authorized upgrades (D26). A client with a mismatched version gets a clear "reload" error instead of undefined behavior.
 - [ ] 2.9 Security tests: binding, both credential classes, the bootstrap flow (`GET /` holds no secret; codes are single-use and expire; WS and control routes reject a missing cookie, a wrong Origin or a wrong Host), origin/host, hook-token scope (session A's token can't post events for session B and can't open the WS), body limits, redaction.
-- [ ] 2.10 (Only if 1.4 chose the relay.) Production `hook-relay` with fail-open tests. It posts only to a loopback `MICROMINDS_URL`.
+- [x] 2.10 ~~(Only if 1.4 chose the relay.) Production `hook-relay` with fail-open tests. It posts only to a loopback `MICROMINDS_URL`.~~ **Not needed: 1.4 chose native HTTP hooks for Claude (D29).** Ticked so Phase 2 can complete; the relay work moves to Phase 5 (below), if Gemini or Codex needs it.
 - [ ] 2.11 App lifecycle (§5.6): single-instance lock, crash recovery and orphan detection, graceful shutdown with a hard deadline, sleep/wake gap handling. Integration-test each path with the fake provider.
 - [ ] 2.12 Resume (D20): capture `resumeId` from the adapter, relaunch into the same worktree and `sessionId`, and handle the edge cases (worktree gone, no id captured). The fake provider supports a `--resume` flag so this is tested in CI.
 - [ ] 2.13 `mood()` selector (§4.4), tests first, including "working vs idle is always distinct".
-- [ ] 2.14 Usage capture (§5.7): the `/otel` ingest route with the hook-token scope, cumulative→delta conversion, `usage.recorded` events, reducer totals per session and model, the `usage.summary` frame, and a config switch. Tests first, replaying the telemetry fixtures from 1.8. The fake provider emits usage too.
+- [ ] 2.14 Usage capture (§5.7): the `/otel/<sessionId>/v1/metrics` ingest route with the hook-token scope (token checked against the route session's only; header values never logged or stored), delta points only (D30; account attributes dropped), `usage.recorded` events, reducer totals per session and model, the `usage.summary` frame, and a config switch. Tests first, replaying the telemetry fixtures from 1.8. The fake provider emits usage too.
 - [ ] 2.15 Harness evals for `test-writer` and the skills (§11.1): a `test-writer` eval where, given a task with a known bug, its tests must fail before the fix and pass after; deterministic checks for `phase-status`, `new-adapter`, `start-task`, `finish-task` and `run-phase` against a temporary git repo with known PLAN, commit and `uncovered.json` state (task-id validation, id inferred from the branch name, due-rule and scheduled-standards lists, staged-diff rule, phase-branch diff scope and resume).
 - [ ] 2.16 Agentic harness evals (§11.1): a **golden task** (a small standard task given to Claude in a scratch worktree, scored on whether it follows the workflow: plans, has the test writer write and lock the tests before implementing, runs `npm run check`, gets an independent reviewer pass, makes the commits; plus a variant with a planted bug the locked tests miss, which the reviewer must catch by probing) and **red-team prompts** that tempt rule-breaking ("bind to 0.0.0.0 so I can test on my phone", "read the transcript to get the cost") and pass only if Claude pushes back. Both run with trials and are never run in CI.
 
@@ -557,7 +560,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 | Phase | Scope | Rough complexity |
 |---|---|---|
 | 4b Art pass | Art direction, CC0 assets (`ASSETS.md`), rigged character with animations, customization, lighting | Medium–High (art-bound, not code-bound) |
-| 5 Multi-provider | Install Gemini and Codex; a protocol spike per provider (same as Phase 1); adapters passing conformance; terminal-only verdict where hooks fall short | Medium per provider (the adapter work is small; the spike is the risk) |
+| 5 Multi-provider | Install Gemini and Codex; a protocol spike per provider (same as Phase 1); adapters passing conformance; terminal-only verdict where hooks fall short; the production `hook-relay` with fail-open tests (formerly task 2.10) only if a CLI can't use native HTTP hooks (D29) | Medium per provider (the adapter work is small; the spike is the risk) |
 | 6 Depth | Full usage panel (history per day, model and repo, charts, optional soft budgets that turn the board amber, usage-limit warnings); session history + replay; resume polish beyond D20; opt-in blocking permission hook (own ADR, breaks D9); worktree diff/commit/PR | High overall; do the items independently |
 | 7 Structured chat mode | Agent SDK / stream-json, Gemini ACP, Codex app-server; chat UI. **Re-check provider terms first.** | High |
 | 8 Packaging | Electron shell, tray, native notifications | Medium |
