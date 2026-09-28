@@ -25,9 +25,9 @@ events arrive):
 
 | Captures | Driver version |
 |---|---|
-| (b), (c), (d), (f), (g), (h), (i), and the relay runs of (a) and (b) | Earlier versions: pre-generated settings files with the same content, one shared scratch repo (`~/micro-minds-spike-target`) reset with git between scenarios |
+| (b), (d), (f), (g), (h), (i), and the relay runs of (a) and (b) | Earlier versions: pre-generated settings files with the same content, one shared scratch repo (`~/micro-minds-spike-target`) reset with git between scenarios |
 | (a) | An intermediate version: wrote its own settings, still the shared scratch repo |
-| (e) | The final version: its own settings, a fresh scratch repo under `~/.micro-minds-dev/spike/targets/`, and no permission prompt ever approved |
+| (e), and (c) re-recorded in task 1.7 | The final version: its own settings, a fresh scratch repo under `~/.micro-minds-dev/spike/targets/`, and no permission prompt ever approved |
 
 An extra, aborted run of (e) with `--allowedTools AskUserQuestion` is kept as
 `e-ask-question-allowed.jsonl`: it shows `PermissionRequest(AskUserQuestion)` still firing (finding 5).
@@ -40,7 +40,7 @@ An extra, aborted run of (e) with `--allowedTools AskUserQuestion` is kept as
 | (a) Q&A | relay | SessionStart → UserPromptSubmit → Stop → SessionEnd |
 | (b) read + edit | http | UserPromptSubmit → PreToolUse(Read) → PostToolUse(Read) → PreToolUse(Edit) → PostToolUse(Edit) → Stop → SessionEnd |
 | (b) read + edit | relay | SessionStart → the same as http |
-| (c) failing shell command | http | UserPromptSubmit → PreToolUse(Bash) → PostToolUse(Bash) → Stop → SessionEnd |
+| (c) failing shell command | http | UserPromptSubmit → PreToolUse(Bash) → PostToolUseFailure(Bash) → Stop → SessionEnd (re-recorded; see finding 3) |
 | (d) permission prompt, declined | http | UserPromptSubmit → PreToolUse(Write) → PermissionRequest(Write) → SessionEnd |
 | (e) AskUserQuestion | http | UserPromptSubmit → PreToolUse(AskUserQuestion) → PermissionRequest(AskUserQuestion) → PostToolUse(AskUserQuestion) → Stop → SessionEnd |
 | (f) subagent | http | UserPromptSubmit → PreToolUse(Agent) → SubagentStart (Explore) → PostToolUse(Agent) → Stop → (subagent) PreToolUse(Bash) → SubagentStop* → PostToolUse(Bash) → PreToolUse(Bash) → SubagentStop* → PostToolUse(Bash) → PreToolUse(SubagentHandback) → PostToolUse(SubagentHandback) → UserPromptSubmit → SubagentStop (Explore) → Stop → UserPromptSubmit → SubagentStop* → Stop → SessionEnd. *From an agent id that never sent `SubagentStart` (empty `agent_type`), not the Explore subagent: see finding 6. |
@@ -56,8 +56,15 @@ An extra, aborted run of (e) with `--allowedTools AskUserQuestion` is kept as
    start derived from the PTY.
 2. **The HTTP hook header reads the token from the environment** (`allowedEnvVars`): no request was
    rejected. Part of task 1.3.
-3. **A shell command that exits non-zero is not a tool failure.** (c) gave `PostToolUse(Bash)`, not
-   `PostToolUseFailure`. PLAN §6's "tool.failed" rules must not rely on it for failed commands.
+3. **A shell command that exits non-zero is a tool failure: `PostToolUseFailure(Bash)`**, with an
+   `error` string, `is_interrupt: false` and `duration_ms` (no `tool_response`). Corrected during
+   task 1.7: the first recording of (c) gave `PostToolUse(Bash)`, but its agent had run
+   `node scripts/fail.js; echo "EXIT: $?"`, so the command as a whole exited 0. The re-recording
+   (2026-09-28, the final driver) asks for the exact command and gets the failure (`Exit code 3`; an
+   attempt before it, where `node` wasn't found in the agent's shell, exited 127 and also gave
+   `PostToolUseFailure`). A wrapper like
+   that hides a failure from the hooks, so `tool.failed` sees only commands whose own exit is
+   non-zero.
 4. **Declining a permission prompt (Esc) cancels the turn:** no `PostToolUse`, no `Stop`.
 5. **`AskUserQuestion`'s question dialog is itself a `PermissionRequest(AskUserQuestion)`.** It fired
    when the question's menu appeared ("Enter to select · ↑/↓ to navigate"), and still fired with

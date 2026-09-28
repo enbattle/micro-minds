@@ -282,7 +282,7 @@ categories, and the findings the adapter must handle are in `docs/protocols/clau
 | `SessionStart` / `SessionEnd` | `session.started` / `session.ended`. `SessionStart` never reaches an HTTP hook (D29), so `session.started` comes from the PTY spawn. |
 | `UserPromptSubmit` | `prompt.submitted` |
 | `PreToolUse` | `tool.started`. `AskUserQuestion` → `attention.question`. `Task`/`Agent` → category `delegate`. |
-| `PostToolUse` / `PostToolUseFailure` | `tool.finished` / `tool.failed`. A shell command that exits non-zero is a `PostToolUse`. |
+| `PostToolUse` / `PostToolUseFailure` | `tool.finished` / `tool.failed`. A shell command that exits non-zero is a `PostToolUseFailure`. |
 | `PermissionRequest` | `attention.permission`; for `AskUserQuestion` (its question dialog), `attention.question` |
 | `Notification` | By `notification_type`: `idle_prompt` → `attention.idle`, `elicitation_dialog` → `attention.question`, anything else (including `permission_prompt`, which `PermissionRequest` already covers) → `unknown` |
 | `SubagentStart` / `SubagentStop` | `agent.spawned` / `agent.finished` (`agent_id`, `agent_type`). A `SubagentStop` for an agent that never started never creates or ends a visible subagent. |
@@ -497,7 +497,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [x] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
 - [x] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
 - [x] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
-- [ ] 1.7 Scrub the fixtures (paths, usernames, secrets) using the `record-fixture` skill.
+- [x] 1.7 Scrub the fixtures (paths, usernames, secrets) using the `record-fixture` skill.
 - [ ] 1.8 Usage telemetry spike (§5.7): enable OpenTelemetry export to a local capture endpoint and record the metric payloads (and the status-line JSON) for scenarios (a), (b) and (f). Confirm the metric names, units, cumulative vs delta, model and session attributes, whether subagents are distinguishable, and whether the user's own settings can override the env. Choose the channel and write an ADR.
 
 **Done when:** `docs/protocols/claude.md` is complete; there are at least 8 scrubbed fixture files; every Claude "verify" in §5 is closed or turned into an ADR; there's a usage-channel verdict with recorded telemetry fixtures.

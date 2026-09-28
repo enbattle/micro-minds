@@ -32,6 +32,7 @@
     "spike:target": "node spikes/phase-1/make-target.ts",
     "spike:latency": "node spikes/phase-1/latency.ts",
     "spike:pty-view": "node spikes/phase-1/pty-view.ts",
+    "spike:scrub": "node spikes/phase-1/scrub.ts",
     "spike:relay-selftest": "node spikes/phase-1/relay-selftest.ts"
   },
   "devDependencies": {

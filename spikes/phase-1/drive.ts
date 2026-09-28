@@ -245,7 +245,11 @@ export const SCENARIOS: Scenario[] = [
     name: 'c-failing-shell',
     channel: 'http',
     steps: [
-      ...turn('Run node scripts/fail.js with the Bash tool and tell me what happened.'),
+      // The command must be exactly this: a wrapper such as `; echo $?` (the first recording's
+      // agent added one) makes the shell exit 0 and hides the failure from the hook.
+      ...turn(
+        'Use the Bash tool once to run exactly this command, with nothing added before or after it: node scripts/fail.js — then tell me what happened.',
+      ),
       { kind: 'exit' },
     ],
   },

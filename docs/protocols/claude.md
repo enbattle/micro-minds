@@ -49,7 +49,7 @@ ones.
 | `UserPromptSubmit` | `prompt` | `prompt.submitted`; `text` = scrubbed, truncated `prompt`. Also sent, with no user typing, when a background subagent's result comes back (finding 6 below). | recorded |
 | `PreToolUse` | `tool_name`, `tool_input`, `tool_use_id` | `tool.started` with `tool.category` from the table below, `useId` = `tool_use_id`. `AskUserQuestion` → `attention.question`. | recorded |
 | `PostToolUse` | `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, `duration_ms` | `tool.finished`. Paired with its `PreToolUse` by `tool_use_id` (every recorded pair matched). | recorded |
-| `PostToolUseFailure` | `error_type`, `error_message`, `is_interrupt` | `tool.failed` | docs |
+| `PostToolUseFailure` | `tool_name`, `tool_input`, `tool_use_id`, `error` (a string), `is_interrupt`, `duration_ms`; no `tool_response` | `tool.failed`, paired with its `PreToolUse` by `tool_use_id`. A shell command that exits non-zero comes here (finding 2). | recorded |
 | `PermissionRequest` | `tool_name`, `tool_input`, `permission_suggestions`; **no `tool_use_id`** | `attention.permission`, except `tool_name: "AskUserQuestion"` → `attention.question` (finding 5). | recorded |
 | `Notification` | `notification_type`, `message` | `idle_prompt` → `attention.idle` (**recorded**, sent 60 s after the session went idle). `elicitation_dialog` → `attention.question` (docs). `permission_prompt` → `unknown`: `PermissionRequest` already raised the hand, and a notification can't tell a question dialog from a permission prompt. Any other type → `unknown`. | recorded / docs |
 | `SubagentStart` | `agent_id`, `agent_type` | `agent.spawned`: `agentId` = `agent_id`, parent = the root agent. | recorded |
@@ -82,9 +82,13 @@ finding 4 comes from the payload fields of the recordings instead.
 
 1. **No `SessionStart` over HTTP** (S1, above). Start and the resume id come from the PTY spawn
    and the first payload.
-2. **A failed shell command is not a tool failure** (S3). A command that exits non-zero gives
-   `PostToolUse(Bash)`, and its `tool_response` (`stdout`, `stderr`, `interrupted`, `isImage`,
-   `noOutputExpected`) has no exit code. PLAN §6's failure window counts only `PostToolUseFailure`.
+2. **A failed shell command is a tool failure** (S3): a command that exits non-zero gives
+   `PostToolUseFailure(Bash)` with an `error` string (the docs' `error_type` and `error_message`
+   did not appear). A wrapper hides it: the first recording's agent ran
+   `node scripts/fail.js; echo "EXIT: $?"`, which exits 0 and gave `PostToolUse(Bash)`, whose
+   `tool_response` (`stdout`, `stderr`, `interrupted`, `isImage`, `noOutputExpected`) has no exit
+   code. So `tool.failed`, and
+   PLAN §6's failure window, see only commands whose own exit is non-zero.
 3. **Declining a permission prompt ends the turn silently** (S4): after `PermissionRequest` comes no
    `PostToolUse` and no `Stop`. The hand stays raised until the next `prompt.submitted`, the
    `idle_prompt` notification (→ `attention.idle`) or `session.ended` (§4.3). The notification is
@@ -112,7 +116,7 @@ finding 4 comes from the payload fields of the recordings instead.
 
 ## Not yet covered
 
-- **Recorded:** never `PostToolUseFailure`, `StopFailure`, `Notification` other than `idle_prompt`,
+- **Recorded:** never `PostToolUseFailure` for a tool other than `Bash`, `StopFailure`, `Notification` other than `idle_prompt`,
   a `SessionStart` with `source` other than `startup`, or `PreCompact` with `trigger: "auto"`.
   Their rows above follow the docs; a fixture replaces each when one is recorded (the
   `record-fixture` skill).
@@ -121,8 +125,25 @@ finding 4 comes from the payload fields of the recordings instead.
 
 ## Fixtures
 
-Scrubbed recordings live in `fixtures/claude/` (task 1.7, `record-fixture` skill), each listed
-here with its scenario, CLI version, OS, date and what it shows.
+Scrubbed recordings live in `fixtures/claude/` (task 1.7, `record-fixture` skill, made by
+`npm run spike:scrub`), each listed here with its scenario, CLI version, OS, date and what it shows.
+Each line is one HTTP hook payload, in arrival order, except in `qa-command-hook` (the relay).
+All were recorded with Claude Code 2.1.283 on Windows 11, in `auto` permission mode except
+`permission-prompt` (`default`).
 
-| Fixture | Scenario | CLI version | OS | Recorded | Shows |
-|---|---|---|---|---|---|
+| Fixture | Scenario (SCENARIOS.md) | Recorded | Shows |
+|---|---|---|---|
+| `qa.jsonl` | (a) Q&A | 2026-09-27 | `UserPromptSubmit → Stop → SessionEnd`; no `SessionStart` over HTTP |
+| `qa-command-hook.jsonl` | (a) Q&A, relay | 2026-09-27 | The only `SessionStart` payload (`source: "startup"`, `model`), which only a command hook receives |
+| `read-edit.jsonl` | (b) read + edit | 2026-09-27 | `Read` then `Edit`, each `PreToolUse`/`PostToolUse` paired by `tool_use_id` |
+| `failing-shell.jsonl` | (c) failing shell command | 2026-09-28 | A non-zero exit → `PostToolUseFailure(Bash)` with `error` and `is_interrupt` |
+| `failing-shell-masked.jsonl` | (c), first recording | 2026-09-27 | The same failure hidden by `; echo "EXIT: $?"` → `PostToolUse(Bash)` with no exit code |
+| `permission-prompt.jsonl` | (d) permission prompt, declined | 2026-09-27 | `PermissionRequest(Write)` with no `tool_use_id`; the decline ends the turn: nothing more until `SessionEnd` |
+| `ask-user-question.jsonl` | (e) AskUserQuestion | 2026-09-27 | `PermissionRequest(AskUserQuestion)` as the question dialog, then the answer in `PostToolUse` |
+| `subagent.jsonl` | (f) subagent | 2026-09-27 | A background `Explore` subagent: `async_launched`, `SubagentHandback`, an untyped `UserPromptSubmit`, and `SubagentStop`s from agents that never started |
+| `ctrl-c.jsonl` | (g) Ctrl-C | 2026-09-27 | `PreToolUse(Bash)`, then nothing until `SessionEnd` from quitting |
+| `process-killed.jsonl` | (h) process killed | 2026-09-27 | `PreToolUse(Bash)`, then nothing at all |
+| `compaction.jsonl` | (i) compaction | 2026-09-27 | `PreCompact` (`manual`), an unseen agent's `SubagentStop`, and `Notification` (`idle_prompt`) |
+
+Replay tests come with the adapter and reducer (tasks 2.1 and 2.4; Phase 2's "Done when" needs
+one per fixture).
