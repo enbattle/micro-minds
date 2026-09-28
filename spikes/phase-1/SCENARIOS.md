@@ -48,7 +48,7 @@ An extra, aborted run of (e) with `--allowedTools AskUserQuestion` is kept as
 | (h) process killed | http | UserPromptSubmit → PreToolUse(Bash) (nothing after the kill) |
 | (i) compaction | http | UserPromptSubmit → PreToolUse(Read) → PostToolUse(Read) → PreToolUse(Read) → PostToolUse(Read) → Stop → UserPromptSubmit → Stop → PreCompact → SubagentStop → Notification → SessionEnd |
 
-## Findings (to confirm and record in `docs/protocols/claude.md`, task 1.6)
+## Findings (confirmed in `docs/protocols/claude.md`, task 1.6)
 
 1. **`SessionStart` doesn't reach an HTTP hook.** It arrived in both relay runs (command hook) and in
    none of the nine HTTP runs, including after `/compact`. PLAN §5.3 maps it to `session.started`,

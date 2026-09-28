@@ -266,23 +266,26 @@ Never edit `~/.claude`, `~/.gemini` or `~/.codex`.
 
 | Provider | Mechanism | Status |
 |---|---|---|
-| Claude Code | Per-session settings file in `~/.micro-minds/sessions/<id>/settings.json`, passed with `claude --settings <file>`. Confirm it **merges** with user and project settings. | **Verify in Phase 1** |
+| Claude Code | Per-session settings file in `~/.micro-minds/sessions/<id>/settings.json`, passed with `claude --settings <file>`. It **merges** with user and project settings: their hooks and ours all fire (`docs/protocols/claude.md`). | Verified in Phase 1 |
 | Gemini CLI | Per-session settings/env | Phase 5 spike |
 | Codex CLI | Per-session config/profile/env | Phase 5 spike |
 
 Don't write injected settings into the worktree. If a worktree file turns out to be unavoidable, add it to `.git/info/exclude`.
 
-### 5.3 Claude Code event mapping (confirm against recorded fixtures)
+### 5.3 Claude Code event mapping (confirmed in Phase 1)
+
+Confirmed against the Phase 1 recordings with Claude Code 2.1.283. The payload fields, the tool
+categories, and the findings the adapter must handle are in `docs/protocols/claude.md`.
 
 | Claude hook | → AgentEvent |
 |---|---|
 | `SessionStart` / `SessionEnd` | `session.started` / `session.ended`. `SessionStart` never reaches an HTTP hook (D29), so `session.started` comes from the PTY spawn. |
 | `UserPromptSubmit` | `prompt.submitted` |
 | `PreToolUse` | `tool.started`. `AskUserQuestion` → `attention.question`. `Task`/`Agent` → category `delegate`. |
-| `PostToolUse` / `PostToolUseFailure` | `tool.finished` / `tool.failed` |
-| `PermissionRequest` | `attention.permission` |
-| `Notification` | `attention.permission` or `attention.idle`, depending on type (verify field names) |
-| `SubagentStart` / `SubagentStop` | `agent.spawned` / `agent.finished` (`agent_id`, `agent_type`) |
+| `PostToolUse` / `PostToolUseFailure` | `tool.finished` / `tool.failed`. A shell command that exits non-zero is a `PostToolUse`. |
+| `PermissionRequest` | `attention.permission`; for `AskUserQuestion` (its question dialog), `attention.question` |
+| `Notification` | By `notification_type`: `idle_prompt` → `attention.idle`, `elicitation_dialog` → `attention.question`, anything else (including `permission_prompt`, which `PermissionRequest` already covers) → `unknown` |
+| `SubagentStart` / `SubagentStop` | `agent.spawned` / `agent.finished` (`agent_id`, `agent_type`). A `SubagentStop` for an agent that never started never creates or ends a visible subagent. |
 | `Stop` / `StopFailure` | `turn.finished` / `turn.failed` (+ `errorClass`) |
 | `PreCompact` | `context.compacting` |
 
@@ -493,7 +496,7 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 - [x] 1.3 Confirm that `--settings` merges with user and project settings, that HTTP hooks work, and whether hooks can be made non-blocking. Check whether hook headers can read the hook token from an environment variable, so per-session settings files hold no token (threat model).
 - [x] 1.4 Measure relay latency on Windows (Node vs HTTP hook) and choose one. Write an ADR.
 - [x] 1.5 Spawn Claude in node-pty inside a throwaway worktree on Windows, and check that login, colors, resize and alt-screen render correctly in xterm.js.
-- [ ] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
+- [x] 1.6 Write `docs/protocols/claude.md` with the confirmed mapping table and the CLI version tested.
 - [ ] 1.7 Scrub the fixtures (paths, usernames, secrets) using the `record-fixture` skill.
 - [ ] 1.8 Usage telemetry spike (§5.7): enable OpenTelemetry export to a local capture endpoint and record the metric payloads (and the status-line JSON) for scenarios (a), (b) and (f). Confirm the metric names, units, cumulative vs delta, model and session attributes, whether subagents are distinguishable, and whether the user's own settings can override the env. Choose the channel and write an ADR.
 

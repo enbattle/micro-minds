@@ -63,6 +63,8 @@ interface Scenario {
   args?: string[];
   /** Task 1.3 experiments: the --settings content, instead of one channel for every event. */
   settings?: (port: number) => Record<string, unknown>;
+  /** Start claude without --settings (a control run: only the user's own hooks apply). */
+  noSettings?: boolean;
   /** Task 1.3 experiments: a project-level .claude/settings.json in the scratch repo. */
   projectSettings?: (port: number) => Record<string, unknown>;
   /** Task 1.3 experiments: how the sink replies on the probe channel. */
@@ -96,6 +98,14 @@ function httpHook(port: number, scenario: string, channel: string, allowEnv = tr
   };
 }
 
+/**
+ * The hook the user adds to their own user settings for x-user-merge. Outside driver sessions the
+ * token variable is unset and the sink isn't running, so the POST is refused and fails open.
+ */
+function userMergeHook(port: number) {
+  return { UserPromptSubmit: [{ hooks: [httpHook(port, 'x-user-merge', PROBE_CHANNEL)] }] };
+}
+
 /** Every event through the relay (a command hook), as the timing baseline. */
 function relayEverywhere(port: number, scenario: string): Record<string, unknown[]> {
   const base = buildSettings({ scenario, channel: 'relay', port }).hooks;
@@ -114,6 +124,30 @@ const EXPERIMENTS: Scenario[] = [
       hooks: { UserPromptSubmit: [{ hooks: [httpHook(port, 'x-merge', PROBE_CHANNEL)] }] },
     }),
     steps: [...turn('Reply with the single word ok.'), { kind: 'exit' }],
+  },
+  {
+    // E1b: the same with a USER-level hook. The user adds userMergeHook (printed by
+    // `npm run spike:drive -- --user-hook`) to their own user settings themselves; the driver never
+    // reads or writes them (hard rules 1 and 2). Both channels arriving means they merge.
+    name: 'x-user-merge',
+    channel: 'http',
+    timings: true,
+    steps: [...turn('Reply with the single word ok.'), { kind: 'exit' }],
+  },
+  {
+    // E1b control: no --settings at all, so only the user's hook can fire. It posts to the
+    // x-user-merge capture (its URL is fixed in the user's settings). If it arrives here but not in
+    // x-user-merge, --settings is what drops user-level hooks.
+    name: 'x-user-hook-only',
+    channel: 'http',
+    timings: true,
+    noSettings: true,
+    steps: [
+      { kind: 'prompt', text: 'Reply with the single word ok.' },
+      { kind: 'wait', event: 'UserPromptSubmit', timeoutMs: 30 * SECOND, optional: true },
+      { kind: 'sleep', ms: 15 * SECOND },
+      { kind: 'exit' },
+    ],
   },
   {
     // E2: the header names the token but allowedEnvVars is empty: the docs say it becomes "".
@@ -410,7 +444,8 @@ async function runScenario(
     settings,
     `${JSON.stringify(scenario.settings?.(port) ?? buildSettings({ scenario: scenario.name, channel: scenario.channel, port }), null, 2)}\n`,
   );
-  const pty = spawn(binary, ['--settings', settings, ...(scenario.args ?? [])], {
+  const settingsArgs = scenario.noSettings === true ? [] : ['--settings', settings];
+  const pty = spawn(binary, [...settingsArgs, ...(scenario.args ?? [])], {
     name: 'xterm-256color',
     cols: 120,
     rows: 40,
@@ -648,6 +683,10 @@ async function main(argv: string[]): Promise<number> {
   const all = [...SCENARIOS, ...EXPERIMENTS];
   if (argv.includes('--list')) {
     for (const s of all) console.log(`${s.name} (${s.channel})`);
+    return 0;
+  }
+  if (argv.includes('--user-hook')) {
+    console.log(JSON.stringify({ hooks: userMergeHook(sinkPort()) }, null, 2));
     return 0;
   }
   const names = argv.filter((a) => a !== '--experiments');
