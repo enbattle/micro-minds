@@ -202,7 +202,9 @@ rows apply if Phase 5 registers it for Gemini or Codex.
   `?access_token=…` keeps its value. An object under a secret-named key is scrubbed by its own
   keys (`{secret: {data: …}}` keeps `data`). A single-case run joined by `-`, `_` or `+` from
   short parts or hex hashes is taken for a name, so a vendor token shaped `<label>-<hex>` with no
-  known prefix pattern (Pulumi, Buildkite and Brevo have one) passes unless its key names it. Task 2.9's body limit
+  known prefix pattern (Pulumi, Buildkite, Brevo, RubyGems, Shippo, Sourcegraph and Lob have one)
+  passes unless its key names it. A mixed-case letter-only token whose letters fall into
+  pronounceable chunks can read as words and pass (unit 2.2-fix3). Task 2.9's body limit
   bounds the scrubber's cost (about 0.6 s per MB at worst); an input past the regex engine's limits
   is replaced whole by the marker rather than passed through.
 - **Hooks fail open** (ADR 0009): lost events can briefly show a wrong state; never a wrong action.

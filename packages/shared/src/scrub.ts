@@ -49,6 +49,10 @@ const KNOWN = [
   new RegExp(`${START}pul-[a-f0-9]{40}(?![A-Za-z0-9])`, 'g'), // Pulumi
   new RegExp(`${START}bkua_[a-f0-9]{40}(?![A-Za-z0-9])`, 'g'), // Buildkite
   new RegExp(`${START}x(?:keysib|smtpsib)-[a-f0-9]{64}-[A-Za-z0-9]{16}(?![A-Za-z0-9])`, 'g'), // Brevo
+  new RegExp(`${START}rubygems_[a-f0-9]{48}(?![A-Za-z0-9])`, 'g'), // RubyGems
+  new RegExp(`${START}shippo_(?:live|test)_[a-f0-9]{40}(?![A-Za-z0-9])`, 'g'), // Shippo
+  new RegExp(`${START}sgp_(?:[a-f0-9]{16}_)?[a-f0-9]{40}(?![A-Za-z0-9])`, 'g'), // Sourcegraph
+  new RegExp(`${START}(?:live|test)_[a-f0-9]{35}(?![A-Za-z0-9])`, 'g'), // Lob
   new RegExp(`${START}npm_[A-Za-z0-9]{36}(?![A-Za-z0-9])`, 'g'), // npm
   new RegExp(`${START}do[opr]_v1_[a-f0-9]{64}(?![A-Za-z0-9])`, 'g'), // DigitalOcean
   new RegExp(`${START}SK[0-9a-fA-F]{32}(?![A-Za-z0-9])`, 'g'), // Twilio API keys
@@ -94,17 +98,44 @@ const ENV_LINE = /^([ \t]*(?:export[ \t]+)?)([A-Za-z_][A-Za-z0-9_]*)([ \t]*=[ \t
  */
 const SHELL_ASSIGNMENT = /(?<=^|[\s;&|])([A-Z][A-Z0-9_]*=)("[^"\r\n]*"|'[^'\r\n]*'|[^\s;&|'"]+)/gm;
 
+/** The key of a `KEY=value` right after an opening quote (`-e "K=…"`, `["K=…"]`). */
+const QUOTED_KEY = /(?<=(["']))([A-Z][A-Z0-9_]*=)/g;
+
 /**
- * `KEY=value` right after an opening quote (`-e "K=…"`, `["K=…"]`): the value runs to the
- * matching closing quote on the line, whatever it holds (`P@ss,w0rd!`, spaces, brackets).
+ * A secret `KEY=value` right after an opening quote: the value runs to the matching closing
+ * quote on the line, whatever it holds (`P@ss,w0rd!`, spaces, brackets). A non-secret key's value
+ * isn't skipped, so a secret quoted inside it (`'DEBUG=1 … "API_KEY=…"'`) is still found. Each
+ * character is scanned at most once past a secret key, so the pass stays linear.
  */
-const QUOTED_ASSIGNMENT = /(?<=(["']))([A-Z][A-Z0-9_]*=)((?:(?!\1)[^\r\n])*)/gm;
+function scrubQuotedAssignments(text: string): string {
+  let out = '';
+  let from = 0;
+  QUOTED_KEY.lastIndex = 0;
+  for (let match = QUOTED_KEY.exec(text); match !== null; match = QUOTED_KEY.exec(text)) {
+    const quote = match[1] ?? '"';
+    const assign = match[2] ?? '';
+    if (!secretKey(assign.slice(0, -1))) continue;
+    const start = match.index + assign.length;
+    let end = start;
+    while (end < text.length) {
+      const char = text.charAt(end);
+      if (char === quote || char === '\n' || char === '\r') break;
+      end++;
+    }
+    if (end > start) {
+      out += `${text.slice(from, start)}${M}`;
+      from = end;
+    }
+    QUOTED_KEY.lastIndex = end;
+  }
+  return out + text.slice(from);
+}
 
 /**
  * `KEY=value` inside brackets or a list (`(K=…)`, `A=1,K=…`, `env:K=…`, a literal `\n` escape):
- * here the value ends at the punctuation that closes its context. After a quote it's the
- * fallback for an assignment the quoted pass skipped over (`'NAME=a "API_KEY=…"'`); a value the
- * quoted pass already redacted starts with `[`, which this one can't match.
+ * here the value ends at the punctuation that closes its context. After a quote it only sees
+ * what the quoted pass left: a value it already redacted starts with `[`, which this one can't
+ * match.
  */
 const NESTED_ASSIGNMENT =
   /(?<=["'=(,:[]|\\n)([A-Z][A-Z0-9_]*=)("[^"\r\n]*"|'[^'\r\n]*'|[^\s;&|'"()[\],\\]+)/gm;
@@ -409,9 +440,7 @@ function scrubTextPasses(text: string): string {
     secretKey(assign.slice(0, -1)) ? `${assign}${redactValue(value)}` : whole,
   );
   // A quoted value is a string literal, never code, so all of it goes.
-  out = out.replace(QUOTED_ASSIGNMENT, (whole, _quote: string, assign: string, value: string) =>
-    secretKey(assign.slice(0, -1)) ? `${assign}${value === '' ? '' : M}` : whole,
-  );
+  out = scrubQuotedAssignments(out);
   out = out.replace(NESTED_ASSIGNMENT, (whole, assign: string, value: string) =>
     secretKey(assign.slice(0, -1)) && (isQuoted(value) || !codeExpression(value))
       ? `${assign}${redactValue(value)}`
@@ -528,7 +557,9 @@ function truncate(json: string, maxLength: number): unknown {
 /**
  * Scrubs every string inside a JSON-like value (for the stored `raw`, D14), keys included,
  * without mutating it, then caps its serialized size. Unserializable parts (cycles, functions,
- * extreme nesting) are replaced, so the result always serializes.
+ * extreme nesting) are replaced, so the result always serializes. Meant for JSON-parsed input:
+ * an object reached along several paths (never the case after `JSON.parse`) is scrubbed once per
+ * path.
  */
 export function scrubRaw(value: unknown, options: ScrubRawOptions): unknown {
   const requested = options.maxLength;
