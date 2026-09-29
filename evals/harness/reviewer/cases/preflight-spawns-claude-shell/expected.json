@@ -1,0 +1,5 @@
+{
+  "mustFind": ["WIN-binary-resolution"],
+  "mustNotFind": ["ARCH-provider-leak", "HR1-credential-access", "CONV-import-extension"],
+  "notes": "The Claude preflight runs `execFile('claude', ['--version'], { shell: true })`, justified as the terminal's own lookup so Windows finds the npm claude.cmd shim, with fixed arguments so no user input reaches the shell. But binaries must be resolved through the provider registry, which handles .cmd/.exe (PLAN §5.5 step 3, D10); a bare name through a shell searches the current directory first on Windows (cmd.exe), so a hostile repo's claude.cmd can run in place of the real CLI, and the pattern invites the first prompt to be added to the same shell later. The rule's own example is spawn('claude', …) outside the registry. Everything else holds: the code sits in apps/server/src/providers/claude/ where Claude's name belongs, it never reads credential files (only --version), imports use '.ts', and the tests cover every branch."
+}

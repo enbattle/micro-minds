@@ -39,6 +39,9 @@ Imports only go *into* `packages/shared`, never out of it. Apps never import eac
 | `packages/shared/src/thresholds.ts`, `severity.ts` | `Thresholds` / `DEFAULT_THRESHOLDS` (§6) and the health rules: failure window, repeated failures, stuck, recovery, errors | 2.1 |
 | `packages/shared/src/reduce.ts` | `createWorld()` and the pure `reduce()` (§4.3); time only via `clock.tick` | 2.1 |
 | `packages/shared/src/scrub.ts` | The scrubber (D14): `scrubText()` for `text` and `tool.summary`, `scrubRaw()` for the stored `raw` (scrubbed, then size-capped) | 2.2 |
+| `apps/server/src/providers/types.ts` | `ProviderAdapter` (binary, hook transport, tool-category map, `launch()`, `normalize()`), `LaunchContext`/`LaunchSpec`, `NormalizeContext` | 2.3 |
+| `apps/server/src/providers/registry.ts` | `createProviderRegistry()`: lookup, `categorize()`, `resolveBinary()` (absolute PATH entries only, PATHEXT on Windows, `.cmd`/`.bat` reported as `cmd`), and `normalize()` that validates, scrubs and caps every adapter event (fallback `unknown`) | 2.3 |
+| `apps/server/src/providers/conformance.test-helpers.ts` | The adapter conformance suite: `describeConformance()` and its checks as pure functions | 2.3 |
 | `fixtures/agent-events/` | Provider-independent `AgentEvent` scenarios (the Phase 1 recordings, plus `clock.tick` scenarios) replayed through `reduce()` | 2.1 |
 | `packages/hook-relay/src/main.ts` | Fail-open no-op relay entry (invariant test only) | 0.1 |
 | `apps/server/src/pty/pty.smoke.test.ts` | node-pty/ConPTY smoke test; no server code yet | 0.3 |
