@@ -190,10 +190,19 @@ rows apply if Phase 5 registers it for Gemini or Codex.
   Known gaps, left open so ordinary text survives (task 2.2 reviews): hex-only keys (they look like
   git hashes), random tokens under 40 characters with no known prefix, single-case letter-only
   tokens, and secrets in YAML or JSON colon forms, `-p<pw>` / `-u user:pw` flags, cookies and
-  custom headers. Also (unit 2.2-fix): in a spaced or indented assignment, a value that is a
-  language literal or an all-lower-case dotted name (`hunter.two`) is taken for code; a key counts
-  as secret-named only by whole words (a bare `key` or `primaryKey` doesn't, `API_KEY` does); and
-  a single-case run joined from short `-`/`_` parts is taken for a name. Task 2.9's body limit
+  custom headers. Also (units 2.2-fix and 2.2-fix2): in a spaced or indented assignment, a value
+  that is a language literal or a dotted name of lower-case letters only (`hunter.two`) is taken
+  for code. A key counts as secret-named only by whole words: a lower-case `key`, a `KEY` after a
+  data-structure or modifier word (`primaryKey`, `cacheKey`, `ctrlKey`) or before a path or id
+  word (`keyPath`, `GPG_KEY_ID`, `SSH_KEY_FILE`), a leading `key` before a keyboard word
+  (`keyCode`), and any secret word before a size, type or field word (`tokenType`,
+  `PASSWORD_MIN_LENGTH`, `passwordField`) don't count; `STRIPE_KEY`, `LICENSE_KEY_CODE`,
+  `VAULT_SECRET_ID` and `SENTRY_DSN_URL` do.
+  Mid-line assignments are matched for upper-case keys only, so a lower-case query-string
+  `?access_token=…` keeps its value. An object under a secret-named key is scrubbed by its own
+  keys (`{secret: {data: …}}` keeps `data`). A single-case run joined by `-`, `_` or `+` from
+  short parts or hex hashes is taken for a name, so a vendor token shaped `<label>-<hex>` with no
+  known prefix pattern (Pulumi, Buildkite and Brevo have one) passes unless its key names it. Task 2.9's body limit
   bounds the scrubber's cost (about 0.6 s per MB at worst); an input past the regex engine's limits
   is replaced whole by the marker rather than passed through.
 - **Hooks fail open** (ADR 0009): lost events can briefly show a wrong state; never a wrong action.

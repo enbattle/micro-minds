@@ -45,6 +45,10 @@ const KNOWN = [
   new RegExp(`${START}github_pat_[A-Za-z0-9_]{50,}`, 'g'), // GitHub fine-grained tokens
   new RegExp(`${START}glpat-[A-Za-z0-9_-]{20,}`, 'g'), // GitLab personal access tokens
   new RegExp(`${START}hf_[A-Za-z0-9]{30,}`, 'g'), // Hugging Face
+  // Label-joined hex tokens, which the long-run pass takes for names (`worktree-<sha>`).
+  new RegExp(`${START}pul-[a-f0-9]{40}(?![A-Za-z0-9])`, 'g'), // Pulumi
+  new RegExp(`${START}bkua_[a-f0-9]{40}(?![A-Za-z0-9])`, 'g'), // Buildkite
+  new RegExp(`${START}x(?:keysib|smtpsib)-[a-f0-9]{64}-[A-Za-z0-9]{16}(?![A-Za-z0-9])`, 'g'), // Brevo
   new RegExp(`${START}npm_[A-Za-z0-9]{36}(?![A-Za-z0-9])`, 'g'), // npm
   new RegExp(`${START}do[opr]_v1_[a-f0-9]{64}(?![A-Za-z0-9])`, 'g'), // DigitalOcean
   new RegExp(`${START}SK[0-9a-fA-F]{32}(?![A-Za-z0-9])`, 'g'), // Twilio API keys
@@ -91,8 +95,16 @@ const ENV_LINE = /^([ \t]*(?:export[ \t]+)?)([A-Za-z_][A-Za-z0-9_]*)([ \t]*=[ \t
 const SHELL_ASSIGNMENT = /(?<=^|[\s;&|])([A-Z][A-Z0-9_]*=)("[^"\r\n]*"|'[^'\r\n]*'|[^\s;&|'"]+)/gm;
 
 /**
- * `KEY=value` inside quotes, brackets or a list (`-e "K=…"`, `["K=…"]`, `(K=…)`, `A=1,K=…`, a
- * literal `\n` escape): here the value also ends at the punctuation that closes its context.
+ * `KEY=value` right after an opening quote (`-e "K=…"`, `["K=…"]`): the value runs to the
+ * matching closing quote on the line, whatever it holds (`P@ss,w0rd!`, spaces, brackets).
+ */
+const QUOTED_ASSIGNMENT = /(?<=(["']))([A-Z][A-Z0-9_]*=)((?:(?!\1)[^\r\n])*)/gm;
+
+/**
+ * `KEY=value` inside brackets or a list (`(K=…)`, `A=1,K=…`, `env:K=…`, a literal `\n` escape):
+ * here the value ends at the punctuation that closes its context. After a quote it's the
+ * fallback for an assignment the quoted pass skipped over (`'NAME=a "API_KEY=…"'`); a value the
+ * quoted pass already redacted starts with `[`, which this one can't match.
  */
 const NESTED_ASSIGNMENT =
   /(?<=["'=(,:[]|\\n)([A-Z][A-Z0-9_]*=)("[^"\r\n]*"|'[^'\r\n]*'|[^\s;&|'"()[\],\\]+)/gm;
@@ -113,25 +125,60 @@ const SECRET_PARTS = new Set([
   'DSN',
 ]);
 
-/** Words that make `KEY` a secret (`API_KEY`, `SECRET_KEY`, `privateKey`); alone it's structure. */
-const KEY_QUALIFIERS = new Set([
-  'API',
-  'SECRET',
-  'PRIVATE',
-  'ACCESS',
-  'CLIENT',
-  'AUTH',
-  'SIGNING',
-  'ENCRYPTION',
-  'MASTER',
-  'LICENSE',
-  'SSH',
-  'GPG',
-  'HMAC',
-  'JWT',
+/** Words before `KEY` that make it a data-structure key (`primaryKey`, `cacheKey`). */
+const STRUCTURAL_KEY_WORDS = new Set([
+  'PRIMARY',
+  'FOREIGN',
+  'SORT',
+  'PARTITION',
+  'CACHE',
+  'RANGE',
+  'IDEMPOTENCY',
+  'UNIQUE',
+  'COMPOSITE',
+  'LOOKUP',
+  'MAP',
+  'GROUP',
+  'ROW',
+  'SHARD',
+  'DEDUPE',
+  'DEDUP',
+  'INDEX',
+  'OBJECT',
+  'REACT',
+  'ENTITY',
+  'QUERY',
+  // Keyboard modifiers (`ctrlKey`, `shiftKey`).
+  'CTRL',
+  'SHIFT',
+  'ALT',
+  'META',
 ]);
 
-/** A word after the secret word that describes it instead (`tokenType`, `PASSWORD_MIN_LENGTH`). */
+/** Words after `KEY` that describe the key, not its value (`keyPath`, `GPG_KEY_ID`). */
+const KEY_DESCRIPTORS = new Set(['PATH', 'FILE', 'DIR', 'NAME', 'ID', 'INDEX', 'FIELD', 'COLUMN']);
+
+/**
+ * Words after a leading `KEY` that make it a keyboard or map term (`keyCode`, `keyDown`,
+ * `keyMap`); after another word (`API_KEY_CODE`, `LICENSE_KEY_MAP`) they may name a secret.
+ */
+const LEADING_KEY_DESCRIPTORS = new Set([
+  'CODE',
+  'DOWN',
+  'UP',
+  'PRESS',
+  'BINDING',
+  'BINDINGS',
+  'MAP',
+  'FRAME',
+  'FRAMES',
+  'EVENT',
+]);
+
+/**
+ * A word after any secret word that can't itself hold a secret (`tokenType`,
+ * `PASSWORD_MIN_LENGTH`). Words that can (`SECRET_ID`, `DSN_URL`, `PASSWORD_PATH`) aren't here.
+ */
 const DESCRIPTORS = new Set([
   'TYPE',
   'TYPES',
@@ -143,31 +190,25 @@ const DESCRIPTORS = new Set([
   'LIMIT',
   'SIZE',
   'POLICY',
-  'PATH',
-  'FILE',
-  'DIR',
-  'NAME',
-  'ID',
   'HINT',
-  'HEADER',
-  'FIELD',
-  'PARAM',
   'FORMAT',
+  'INDEX',
+  'FIELD',
+  'HEADER',
+  'PARAM',
+  'DIR',
   'THROUGH',
   'USAGE',
-  'PREFIX',
   'EXPIRY',
   'EXPIRES',
   'TTL',
-  'URL',
-  'ENDPOINT',
-  'INDEX',
 ]);
 
 /**
  * A key naming a secret as one of its words, whatever the case style: `DB_PASSWORD`, `api-key`,
- * `apiKey`, `accessToken`, `SECRET_KEY_BASE` (not `TOKENIZERS`, `keyboard`, `monkey`, a bare
- * `key`, `primaryKey`, `tokenType`, `PASSWORD_MIN_LENGTH`).
+ * `apiKey`, `STRIPE_KEY`, an env-style `KEY`, `SECRET_KEY_BASE`, `VAULT_SECRET_ID` (not
+ * `TOKENIZERS`, `keyboard`, `monkey`, a lower-case `key`, `primaryKey`, `keyPath`, `tokenType`,
+ * `PASSWORD_MIN_LENGTH`).
  */
 function secretKey(key: string): boolean {
   // PWD alone is the shell's working directory, not a password.
@@ -181,7 +222,12 @@ function secretKey(key: string): boolean {
     if (!SECRET_PARTS.has(part)) return false;
     const next = parts[i + 1];
     if (next !== undefined && DESCRIPTORS.has(next)) return false;
-    return part !== 'KEY' || KEY_QUALIFIERS.has(parts[i - 1] ?? '');
+    if (part !== 'KEY') return true;
+    // Alone, only the env-style upper-case `KEY` names a secret; a `key` is structure.
+    if (parts.length === 1) return key === 'KEY';
+    if (next !== undefined && KEY_DESCRIPTORS.has(next)) return false;
+    if (i === 0 && next !== undefined && LEADING_KEY_DESCRIPTORS.has(next)) return false;
+    return !STRUCTURAL_KEY_WORDS.has(parts[i - 1] ?? '');
   });
 }
 
@@ -191,8 +237,11 @@ function codeExpression(value: string): boolean {
 }
 
 const LITERAL = /^(?:None|null|undefined|nil|NULL|True|False|true|false)$/;
-/** A dotted name in code style: every segment starts lower-case (`item.name`, `config.token`). */
-const DOTTED_NAME = /^[a-z_$][\w$]*(?:\.[a-z_$][\w$]*)+$/;
+/**
+ * A dotted name in code style: every segment is lower-case letters, `_` or `$` (`item.name`,
+ * `config.db_password`). A digit or capital (`hunter2.x9Kq7Zp`) makes it a possible secret.
+ */
+const DOTTED_NAME = /^[a-z_$]+(?:\.[a-z_$]+)+$/;
 
 /**
  * In a line that looks like source (indented, or spaces around `=`), a language literal or a
@@ -257,14 +306,15 @@ function pathSegment(segment: string): boolean {
 }
 
 /**
- * A single-case run made of words or digit groups joined by `-` or `_` (`micro-minds-server`,
- * `MAXIMUM_CONCURRENT_SESSIONS`); a random single-case token isn't.
+ * A single-case run made of words, digit groups or hashes joined by `-`, `_` or `+`
+ * (`micro-minds-server`, `MAXIMUM_CONCURRENT_SESSIONS`, `worktree-<sha>`, a `q=how+to+…` query);
+ * a random single-case token isn't. Not `=`: `api_key=<hex>` in a query string is a secret.
  */
 function singleCaseWords(run: string): boolean {
-  const parts = run.split(/[-_]+/).filter((part) => part !== '');
-  // Names are joined from short parts (`k8s`, `python3`, `S3`, `2024`, `strengths`); a random
-  // token is one long unbroken part.
-  return parts.length > 1 && parts.every((part) => part.length <= 16);
+  const parts = run.split(/[-_+]+/).filter((part) => part !== '');
+  // Names are joined from short parts (`k8s`, `python3`, `S3`, `2024`, `strengths`) or a hash;
+  // a random token is one long unbroken part.
+  return parts.length > 1 && parts.every((part) => part.length <= 16 || HEX_OR_UUID.test(part));
 }
 
 function highEntropy(run: string): boolean {
@@ -358,6 +408,10 @@ function scrubTextPasses(text: string): string {
   out = out.replace(SHELL_ASSIGNMENT, (whole, assign: string, value: string) =>
     secretKey(assign.slice(0, -1)) ? `${assign}${redactValue(value)}` : whole,
   );
+  // A quoted value is a string literal, never code, so all of it goes.
+  out = out.replace(QUOTED_ASSIGNMENT, (whole, _quote: string, assign: string, value: string) =>
+    secretKey(assign.slice(0, -1)) ? `${assign}${value === '' ? '' : M}` : whole,
+  );
   out = out.replace(NESTED_ASSIGNMENT, (whole, assign: string, value: string) =>
     secretKey(assign.slice(0, -1)) && (isQuoted(value) || !codeExpression(value))
       ? `${assign}${redactValue(value)}`
@@ -397,11 +451,20 @@ function maskSecret(value: unknown, depth: number, seen: Set<object>): unknown {
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return M;
   }
-  if (Array.isArray(value) && depth < MAX_DEPTH) {
-    return value.map((item) => {
-      const masked = maskSecret(item, depth + 1, seen);
-      return masked === undefined ? null : masked;
-    });
+  if (Array.isArray(value)) {
+    // The same depth and cycle guards as scrubValue: an array holding itself twice would
+    // otherwise branch at every level.
+    if (depth >= MAX_DEPTH) return '[too deep]';
+    if (seen.has(value)) return '[circular]';
+    seen.add(value);
+    try {
+      return value.map((item) => {
+        const masked = maskSecret(item, depth + 1, seen);
+        return masked === undefined ? null : masked;
+      });
+    } finally {
+      seen.delete(value);
+    }
   }
   return scrubValue(value, depth, seen);
 }
