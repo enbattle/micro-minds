@@ -410,3 +410,29 @@ export const WRAPPERS: readonly (readonly [string, string])[] = [
   ['`', '`'],
   [': ', '.'],
 ];
+
+// ---------------------------------------------------------------------------------------------
+// Revision of 2.2 (reviewer and security findings): more known key shapes, all shorter than the
+// 40-character high-entropy threshold or made of hex, so only a known-prefix rule catches them.
+// ---------------------------------------------------------------------------------------------
+
+export const LETTERS = `${UPPER}${LOWER}`;
+
+/** Known key shapes added in the 2.2 revision (Stripe, GitLab, Hugging Face, Twilio, npm, DO). */
+export const MORE_KNOWN_SHAPES: readonly SecretShape[] = [
+  { name: 'Stripe live secret key (sk_live_)', make: prefixed('sk_live_', 24, ALNUM) },
+  { name: 'Stripe test secret key (sk_test_)', make: prefixed('sk_test_', 24, ALNUM) },
+  { name: 'Stripe live restricted key (rk_live_)', make: prefixed('rk_live_', 24, ALNUM) },
+  { name: 'Stripe live secret key, long form (sk_live_)', make: prefixed('sk_live_', 99, ALNUM) },
+  { name: 'GitLab personal access token (glpat-)', make: prefixed('glpat-', 20, BASE64URL) },
+  { name: 'Hugging Face token (hf_)', make: prefixed('hf_', 34, LETTERS) },
+  { name: 'Twilio API key (SK + 32 hex)', make: prefixed('SK', 32, HEX) },
+  { name: 'npm token (npm_)', make: prefixed('npm_', 36, ALNUM) },
+  { name: 'DigitalOcean token (dop_v1_)', make: prefixed('dop_v1_', 64, HEX) },
+];
+
+/** A random token with no digit at all: one upper, one lower, then `length - 2` from `alphabet`. */
+export function digitFreeToken(seed: number, length: number, alphabet: string): string {
+  const next = prng(seed);
+  return chars(next, 1, UPPER) + chars(next, 1, LOWER) + chars(next, length - 2, alphabet);
+}
