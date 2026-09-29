@@ -1,0 +1,49 @@
+diff --git a/apps/server/src/providers/claude/version.test.ts b/apps/server/src/providers/claude/version.test.ts
+new file mode 100644
+index 0000000..be7f9fc
+--- /dev/null
++++ b/apps/server/src/providers/claude/version.test.ts
+@@ -0,0 +1,32 @@
++import { execFileSync } from 'node:child_process';
++import { describe, expect, it } from 'vitest';
++import { parseClaudeVersion } from './version.ts';
++
++/** The installed CLI's own output, if there is one: keeps the parser honest about the real format. */
++function installedOutput(): string | undefined {
++  try {
++    return execFileSync('claude', ['--version'], { encoding: 'utf8', timeout: 10_000 });
++  } catch {
++    return undefined;
++  }
++}
++
++const installed = installedOutput();
++
++describe('parseClaudeVersion', () => {
++  it.each([
++    ['2.1.283 (Claude Code)', '2.1.283'],
++    ['2.1.283\n', '2.1.283'],
++    ['  10.0.1-beta.2 (Claude Code)', '10.0.1'],
++  ])('%j → %s', (output, version) => {
++    expect(parseClaudeVersion(output)).toBe(version);
++  });
++
++  it.each(['', 'command not found', 'Claude Code', 'v2'])('no version in %j', (output) => {
++    expect(parseClaudeVersion(output)).toBeUndefined();
++  });
++
++  it.skipIf(installed === undefined)('parses the installed CLI output (skipped without claude)', () => {
++    expect(parseClaudeVersion(installed ?? '')).toMatch(/^\d+\.\d+\.\d+$/);
++  });
++});
+diff --git a/apps/server/src/providers/claude/version.ts b/apps/server/src/providers/claude/version.ts
+new file mode 100644
+index 0000000..50ca422
+--- /dev/null
++++ b/apps/server/src/providers/claude/version.ts
+@@ -0,0 +1,5 @@
++/** The CLI version from `claude --version` output (`2.1.283 (Claude Code)`), for preflight. */
++export function parseClaudeVersion(output: string): string | undefined {
++  const match = /^\s*(\d+\.\d+\.\d+)(?:[-+][0-9A-Za-z.-]+)?\b/.exec(output);
++  return match?.[1];
++}

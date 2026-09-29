@@ -1,0 +1,66 @@
+diff --git a/apps/server/src/providers/claude/notification.test.ts b/apps/server/src/providers/claude/notification.test.ts
+new file mode 100644
+index 0000000..be2a8b7
+--- /dev/null
++++ b/apps/server/src/providers/claude/notification.test.ts
+@@ -0,0 +1,35 @@
++import { readFileSync } from 'node:fs';
++import path from 'node:path';
++import { describe, expect, it } from 'vitest';
++import { notificationKinds } from './notification.ts';
++
++const FIXTURES = path.resolve(import.meta.dirname, '../../../../../fixtures/claude');
++
++function notifications(file: string): Record<string, unknown>[] {
++  return readFileSync(path.join(FIXTURES, file), 'utf8')
++    .split('\n')
++    .filter((line) => line.trim() !== '')
++    .map((line) => JSON.parse(line) as Record<string, unknown>)
++    .filter((payload) => payload.hook_event_name === 'Notification');
++}
++
++describe('notificationKinds', () => {
++  it('replays the compaction fixture: idle_prompt raises the idle hand', () => {
++    const payloads = notifications('compaction.jsonl');
++    expect(payloads.length).toBeGreaterThan(0);
++    for (const payload of payloads) expect(notificationKinds(payload)).toEqual(['attention.idle']);
++  });
++
++  it('an elicitation dialog is a question', () => {
++    expect(notificationKinds({ notification_type: 'elicitation_dialog' })).toEqual([
++      'attention.question',
++    ]);
++  });
++
++  it.each(['permission_prompt', 'auth_success', undefined, 42])(
++    'anything else yields no event: %j',
++    (type) => {
++      expect(notificationKinds({ notification_type: type })).toEqual([]);
++    },
++  );
++});
+diff --git a/apps/server/src/providers/claude/notification.ts b/apps/server/src/providers/claude/notification.ts
+new file mode 100644
+index 0000000..d32a3e0
+--- /dev/null
++++ b/apps/server/src/providers/claude/notification.ts
+@@ -0,0 +1,19 @@
++import type { EventKind } from '@micro-minds/shared';
++
++/**
++ * Claude's `Notification` hook by `notification_type` (docs/protocols/claude.md). `idle_prompt`
++ * raises the idle hand and `elicitation_dialog` a question. `permission_prompt` duplicates the
++ * `PermissionRequest` that already raised the hand, and the other types (auth success, progress
++ * pings) carry nothing the board shows, so they're dropped here instead of cluttering the event
++ * log with `unknown` rows nobody reads.
++ */
++export function notificationKinds(payload: Record<string, unknown>): EventKind[] {
++  switch (payload.notification_type) {
++    case 'idle_prompt':
++      return ['attention.idle'];
++    case 'elicitation_dialog':
++      return ['attention.question'];
++    default:
++      return [];
++  }
++}

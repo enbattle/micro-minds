@@ -1,0 +1,5 @@
+{
+  "mustFind": ["TEST-no-fixture"],
+  "mustNotFind": ["HR7-unknown-event-throws", "TEST-real-cli", "ARCH-provider-leak"],
+  "notes": "A bug fix in Claude hook attribution (SubagentStops from agents that never started, with agent_type \"\", were attributed to the root agent and ended its turn) is tested only with hand-built payloads, justified as keeping each case readable. The shape it fixes is recorded: fixtures/claude/subagent.jsonl and compaction.jsonl hold exactly these SubagentStops (docs/protocols/claude.md finding 6), and TEST-no-fixture requires adapter tests to replay fixtures/<provider>/*.jsonl where one exists and a bug fix to come with a fixture that reproduces it. Everything else holds: attribution never throws or drops a payload (non-string ids fall back to the root agent), the code sits in apps/server/src/providers/claude/, and no test spawns a CLI."
+}

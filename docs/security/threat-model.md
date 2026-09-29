@@ -102,7 +102,7 @@ E elevation of privilege.
 | I | Managed settings set only a metrics endpoint, so the process-env OTLP header sends the session's hook token to that collector | The token only posts to that session's loopback ingest (D13) and dies with the session | ADR 0030 | accepted |
 | T | Forged usage inflates cost or totals | Per-session only; usage never affects health; cost labelled `≈` | ADR 0025 | accepted |
 | D | Event floods, huge bodies, unbounded metric series | Body limit, zod on used fields only, per-session rate limit, unknown metrics ignored | PLAN §5.7, §9.6 | planned: tasks 2.7, 2.14 |
-| E | Crafted payload crashes ingest or reducer | Unknown → `kind: 'unknown'`, never throw; zod at boundary | HR7 | planned: task 2.4 |
+| E | Crafted payload crashes ingest or reducer | Unknown → `kind: 'unknown'`, never throw; zod at boundary | HR7; the adapters: `apps/server/src/providers/claude/adapter.test.ts`, `fake/adapter.test.ts` and the conformance suite (`fc.anything()` inputs), the registry: `registry.test.ts`, the reducer: `packages/shared` property tests | adapters, registry and reducer enforced by test (2.1, 2.3, 2.4); the ingest route: planned: task 2.7 |
 
 ### PTY I/O and session manager
 

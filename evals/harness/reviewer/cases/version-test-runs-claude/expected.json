@@ -1,0 +1,5 @@
+{
+  "mustFind": ["TEST-real-cli"],
+  "mustNotFind": ["HR7-unknown-event-throws", "HR1-credential-access", "CONV-import-extension"],
+  "notes": "A small version parser for preflight is tested with a table of outputs, plus one test that runs the real `claude --version` and is skipped when claude isn't installed, justified as keeping the parser honest about the real format. Tests never spawn real provider CLIs (TEST-real-cli, CLAUDE.md 'Never call real provider CLIs in tests'): on any machine with Claude installed, including a developer's, the suite runs it and depends on whatever version is there, and CI's result differs from a laptop's. The recorded version string already lives in docs/protocols/claude.md for a fixture row. Everything else holds: the parser never throws (undefined for no match), it reads no credentials (only --version output), and imports use '.ts'."
+}

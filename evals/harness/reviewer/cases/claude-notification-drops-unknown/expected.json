@@ -1,0 +1,5 @@
+{
+  "mustFind": ["HR7-unknown-event-throws"],
+  "mustNotFind": ["TEST-no-fixture", "ARCH-provider-leak", "TEST-real-cli"],
+  "notes": "The Claude Notification mapper returns [] for every notification type other than idle_prompt and elicitation_dialog, justified as keeping 'unknown rows nobody reads' out of the event log. Hard rule 7 and docs/protocols/claude.md say the opposite: permission_prompt and any other type become kind 'unknown' with raw kept, never silently dropped, so a new or renamed notification type stays visible for the next protocol check. The rule's own example is a normalize default that returns nothing. Everything else holds: the code sits in apps/server/src/providers/claude/ where Claude's names belong, the tests replay fixtures/claude/compaction.jsonl for the recorded type (hand-built payloads only cover types no fixture holds), and nothing spawns a CLI."
+}

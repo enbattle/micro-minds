@@ -1,0 +1,60 @@
+diff --git a/apps/server/src/providers/claude/attribution.test.ts b/apps/server/src/providers/claude/attribution.test.ts
+new file mode 100644
+index 0000000..1a4a143
+--- /dev/null
++++ b/apps/server/src/providers/claude/attribution.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from 'vitest';
++import { attribute } from './attribution.ts';
++
++const SESSION = '01K6F000000000000000000000';
++
++// Minimal payloads: only the fields under test, so each case reads at a glance.
++describe('attribute', () => {
++  it('a payload without agent_id belongs to the root agent', () => {
++    expect(attribute({ hook_event_name: 'Stop' }, SESSION)).toEqual({ agentId: SESSION });
++  });
++
++  it('a subagent payload belongs to that subagent, parented to the root', () => {
++    expect(
++      attribute({ hook_event_name: 'PreToolUse', agent_id: 'a1b2c3', agent_type: 'Explore' }, SESSION),
++    ).toEqual({ agentId: 'a1b2c3', parentAgentId: SESSION });
++  });
++
++  it('regression: a SubagentStop from an agent that never started belongs to that agent', () => {
++    expect(
++      attribute({ hook_event_name: 'SubagentStop', agent_id: 'a9f8e7', agent_type: '' }, SESSION),
++    ).toEqual({ agentId: 'a9f8e7', parentAgentId: SESSION });
++  });
++
++  it.each([null, 42, '', {}, ['a1']])('a missing or non-string agent_id is the root: %j', (agentId) => {
++    expect(attribute({ agent_id: agentId }, SESSION)).toEqual({ agentId: SESSION });
++  });
++});
+diff --git a/apps/server/src/providers/claude/attribution.ts b/apps/server/src/providers/claude/attribution.ts
+new file mode 100644
+index 0000000..933f42b
+--- /dev/null
++++ b/apps/server/src/providers/claude/attribution.ts
+@@ -0,0 +1,21 @@
++/** Which agent a Claude hook payload belongs to (docs/protocols/claude.md, "Attribution"). */
++export interface Attribution {
++  agentId: string;
++  parentAgentId?: string;
++}
++
++/**
++ * A payload with a non-empty `agent_id` belongs to that subagent, whose parent is the root agent;
++ * anything else to the root agent itself (our session id).
++ *
++ * Fix: this used to test `agent_type`, so the `SubagentStop`s that arrive from agents that never
++ * started (`agent_type: ""`, docs/protocols/claude.md finding 6) were attributed to the root agent
++ * and ended its turn. `agent_id` is what identifies the agent.
++ */
++export function attribute(payload: Record<string, unknown>, sessionId: string): Attribution {
++  const agentId = payload.agent_id;
++  if (typeof agentId === 'string' && agentId !== '') {
++    return { agentId, parentAgentId: sessionId };
++  }
++  return { agentId: sessionId };
++}

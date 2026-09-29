@@ -42,6 +42,12 @@ Imports only go *into* `packages/shared`, never out of it. Apps never import eac
 | `apps/server/src/providers/types.ts` | `ProviderAdapter` (binary, hook transport, tool-category map, `launch()`, `normalize()`), `LaunchContext`/`LaunchSpec`, `NormalizeContext` | 2.3 |
 | `apps/server/src/providers/registry.ts` | `createProviderRegistry()`: lookup, `categorize()`, `resolveBinary()` (absolute PATH entries only, PATHEXT on Windows, `.cmd`/`.bat` reported as `cmd`), and `normalize()` that validates, scrubs and caps every adapter event (fallback `unknown`) | 2.3 |
 | `apps/server/src/providers/conformance.test-helpers.ts` | The adapter conformance suite: `describeConformance()` and its checks as pure functions | 2.3 |
+| `apps/server/src/providers/hook-url.ts` | `hookEndpoint()`: `<server>/hooks?session=<sessionId>`, where every adapter's hooks post | 2.4 |
+| `apps/server/src/providers/claude/adapter.ts` | `claudeAdapter`: per-session settings with 13 HTTP hooks (token read from the PTY env), and `normalize()` per `docs/protocols/claude.md` | 2.4 |
+| `apps/server/src/providers/fake/adapter.ts`, `fake/cli.ts` | `fakeAdapter` and the fake CLI (`node cli.ts`): echoes its input and replays `fixtures/fake/<scenario>.jsonl` to `/hooks`, failing open | 2.4 |
+| `apps/server/src/providers/index.ts` | `createDefaultRegistry()`: the Claude and fake adapters | 2.4 |
+| `apps/server/src/config/fake-cli.ts` | The fake CLI's env, parsed with zod | 2.4 |
+| `fixtures/fake/` | Fake-provider scenarios (`basic`, `subagent`) | 2.4 |
 | `fixtures/agent-events/` | Provider-independent `AgentEvent` scenarios (the Phase 1 recordings, plus `clock.tick` scenarios) replayed through `reduce()` | 2.1 |
 | `packages/hook-relay/src/main.ts` | Fail-open no-op relay entry (invariant test only) | 0.1 |
 | `apps/server/src/pty/pty.smoke.test.ts` | node-pty/ConPTY smoke test; no server code yet | 0.3 |

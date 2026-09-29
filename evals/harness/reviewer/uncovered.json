@@ -1,17 +1,5 @@
 {
   "$comment": "Reviewer rules without a planted eval case yet, each due with the PLAN task that first writes the code it governs. CI fails if a due task is ticked while its rule is still listed (coverage.test.ts). Remove an entry in the same PR that adds its case. See evals/harness/README.md#growing-the-harness.",
-  "HR7-unknown-event-throws": {
-    "due": "2.4",
-    "why": "Claude adapter normalize()"
-  },
-  "TEST-no-fixture": {
-    "due": "2.4",
-    "why": "Adapter tests replay fixtures"
-  },
-  "TEST-real-cli": {
-    "due": "2.4",
-    "why": "Adapter and fake-provider tests must never call real CLIs"
-  },
   "HR10-worktree-location": {
     "due": "2.5",
     "why": "WorktreeManager"

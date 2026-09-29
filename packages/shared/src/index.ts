@@ -1,5 +1,6 @@
 export {
   type AgentEvent,
+  ERROR_CLASSES,
   type ErrorClass,
   EVENT_KINDS,
   EVENT_SCHEMA_VERSION,

@@ -15,7 +15,8 @@ checklist).
 - **`SessionStart` never reaches an HTTP hook** (**recorded**: in none of 9 HTTP runs, including
   after `/compact`; it reached a command hook in every relay run). The docs say every event supports
   HTTP hooks, so this contradicts them. `session.started` comes from the PTY spawn instead (ADR 0029).
-- **Injection:** a per-session settings file passed with `claude --settings <file>` (PLAN §5.2). It
+- **Injection:** a per-session settings file passed with `claude --settings <file>` (PLAN §5.2),
+  written by `claudeAdapter.launch()`; every hook posts to `/hooks?session=<our session id>`. It
   **merges** with both the project's `.claude/settings.json` and the user's own settings
   (**recorded**: a project hook and ours both fired; so did a hook the user added to their user
   settings, and ours). The driver never read the user's settings (hard rule 1): the user added
@@ -185,5 +186,6 @@ All were recorded with Claude Code 2.1.283 on Windows 11, in `auto` permission m
 | `otel-subagent.jsonl` | (f) subagent, telemetry (`t-subagent`) | 2026-09-28 | Subagent points: `query_source: "subagent"`, `agent.name: "Explore"`, no agent id |
 | `statusline-qa.jsonl`, `statusline-read-edit.jsonl`, `statusline-subagent.jsonl` | (a), (b), (f), status line | 2026-09-28 | One status-line stdin JSON per line; cumulative `cost.total_cost_usd` |
 
-Replay tests come with the adapter and reducer (tasks 2.1 and 2.4; Phase 2's "Done when" needs
-one per fixture) and, for the telemetry fixtures, with usage capture (task 2.14).
+Every hook fixture is replayed through the adapter, the provider registry and `reduce()` with its
+expected event sequence written out (`apps/server/src/providers/claude/replay.test.ts`, task 2.4); the
+telemetry fixtures get theirs with usage capture (task 2.14).
