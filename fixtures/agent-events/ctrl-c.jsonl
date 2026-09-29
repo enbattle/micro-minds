@@ -1,0 +1,4 @@
+{"v":1,"id":"01K6B007000000000000000000","ts":1790000000000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"session.started"}
+{"v":1,"id":"01K6B007000000000000000001","ts":1790000002000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"prompt.submitted"}
+{"v":1,"id":"01K6B007000000000000000002","ts":1790000005000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"tool.started","tool":{"name":"Bash","category":"exec","useId":"toolu_01"}}
+{"v":1,"id":"01K6B007000000000000000003","ts":1790000011500,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"session.ended"}

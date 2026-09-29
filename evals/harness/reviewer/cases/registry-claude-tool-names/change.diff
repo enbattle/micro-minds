@@ -1,0 +1,72 @@
+diff --git a/apps/server/src/providers/categories.test.ts b/apps/server/src/providers/categories.test.ts
+new file mode 100644
+index 0000000..34f0859
+--- /dev/null
++++ b/apps/server/src/providers/categories.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from 'vitest';
++import { categorize } from './categories.ts';
++
++describe('categorize', () => {
++  it("uses the adapter's own map first", () => {
++    expect(categorize({ Bash: 'other', run_shell: 'exec' }, 'Bash')).toBe('other');
++    expect(categorize({ run_shell: 'exec' }, 'run_shell')).toBe('exec');
++  });
++
++  it.each([
++    ['Read', 'read'],
++    ['Edit', 'write'],
++    ['Bash', 'exec'],
++    ['Task', 'delegate'],
++    ['AskUserQuestion', 'ask'],
++    ['WebFetch', 'web'],
++  ] as const)('falls back to the common table: %s → %s', (name, category) => {
++    expect(categorize({}, name)).toBe(category);
++  });
++
++  it.each(['mcp__github__create_issue', 'constructor', '__proto__', 'bash', ''])(
++    'an unmapped tool is other: %j',
++    (name) => {
++      expect(categorize({}, name)).toBe('other');
++    },
++  );
++});
+diff --git a/apps/server/src/providers/categories.ts b/apps/server/src/providers/categories.ts
+new file mode 100644
+index 0000000..a382a6c
+--- /dev/null
++++ b/apps/server/src/providers/categories.ts
+@@ -0,0 +1,33 @@
++import type { ToolCategory } from '@micro-minds/shared';
++
++/**
++ * Categories for tools every coding CLI ships under the same names. Adapters only list their own
++ * extras; anything they leave out falls back to this table, so a new adapter gets sensible
++ * categories on day one instead of showing every tool as 'other'.
++ */
++const COMMON_TOOLS: Readonly<Record<string, ToolCategory>> = {
++  Read: 'read',
++  Grep: 'read',
++  Glob: 'read',
++  Edit: 'write',
++  Write: 'write',
++  Bash: 'exec',
++  Task: 'delegate',
++  Agent: 'delegate',
++  AskUserQuestion: 'ask',
++  WebFetch: 'web',
++  WebSearch: 'web',
++};
++
++/**
++ * The category of `toolName`: the adapter's own map first, then the common table, then 'other'.
++ * Own-property lookups only, so a tool named `constructor` or `__proto__` is just unmapped.
++ */
++export function categorize(
++  own: Readonly<Record<string, ToolCategory>>,
++  toolName: string,
++): ToolCategory {
++  if (Object.hasOwn(own, toolName)) return own[toolName] ?? 'other';
++  if (Object.hasOwn(COMMON_TOOLS, toolName)) return COMMON_TOOLS[toolName] ?? 'other';
++  return 'other';
++}

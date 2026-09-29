@@ -93,7 +93,7 @@ E elevation of privilege.
 | S | Session A's token posts events or usage for session B | Token checked against the `sessionId` of the request, constant time | ADR 0013, 0025; HR4 | planned: task 2.9 |
 | S | Agent forges its own session's events (fake "done", hide a hand) | None possible; the hook token is in its env | ADR 0013 | accepted |
 | I | Unknown-session probing, error detail leaks | 404 with no body details | PLAN §9.6 | planned: task 2.9 |
-| I | Payload secrets stored or broadcast | Scrub `text`, `tool.summary`, `raw`; cap `raw`; strip `raw` from WS | ADR 0014; HR8 | planned: tasks 2.2, 2.9 |
+| I | Payload secrets stored or broadcast | Scrub `text`, `tool.summary`, `raw`; cap `raw`; strip `raw` from WS | ADR 0014; HR8; the scrubber: `packages/shared/src/scrub.test.ts`, `scrub.property.test.ts` | scrubber enforced by test (2.2); the `text`, `tool.summary` and `raw` of every adapter event scrubbed and `raw` capped by the provider registry (ids and tool names aren't scrubbed): enforced by test (2.3, `apps/server/src/providers/registry.test.ts`); stripping `raw`: planned: task 2.9 |
 | I | Prompts or tool details in telemetry | Exporter prompt and tool-detail logging off; logs exporter off; loopback endpoint only | PLAN §5.7; ADR 0030; `SEC-telemetry-config` | planned: task 2.14 (verified: task 1.8, prompt and response text arrive `<REDACTED>`) |
 | I | Account identifiers in telemetry (`user.email`, `user.id`, `organization.id` on every metric point) stored or logged | Ingest reads only value, model, type, query source and agent type; account attributes dropped before storage or logs; no telemetry `raw` | ADR 0030 | planned: task 2.14 |
 | T | A user's own settings redirect or break the session's telemetry | Telemetry config in the per-session settings file, which outranks user settings (verified with the generic endpoint variable; inferred for the per-signal one ADR 0030 uses); if a user's own OTLP headers replace ours, the result is 401s, shown as usage unavailable (expected, not recorded) | ADR 0030 | verified: task 1.8 (generic endpoint); designed (per-signal endpoint, headers) |
@@ -102,13 +102,13 @@ E elevation of privilege.
 | I | Managed settings set only a metrics endpoint, so the process-env OTLP header sends the session's hook token to that collector | The token only posts to that session's loopback ingest (D13) and dies with the session | ADR 0030 | accepted |
 | T | Forged usage inflates cost or totals | Per-session only; usage never affects health; cost labelled `≈` | ADR 0025 | accepted |
 | D | Event floods, huge bodies, unbounded metric series | Body limit, zod on used fields only, per-session rate limit, unknown metrics ignored | PLAN §5.7, §9.6 | planned: tasks 2.7, 2.14 |
-| E | Crafted payload crashes ingest or reducer | Unknown → `kind: 'unknown'`, never throw; zod at boundary | HR7 | planned: task 2.4 |
+| E | Crafted payload crashes ingest or reducer | Unknown → `kind: 'unknown'`, never throw; zod at boundary | HR7; the adapters: `apps/server/src/providers/claude/adapter.test.ts`, `fake/adapter.test.ts` and the conformance suite (`fc.anything()` inputs), the registry: `registry.test.ts`, the reducer: `packages/shared` property tests | adapters, registry and reducer enforced by test (2.1, 2.3, 2.4); the ingest route: planned: task 2.7 |
 
 ### PTY I/O and session manager
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
-| E | Injection via repo path, name or first prompt in the spawn | Binary from the provider registry; argv arrays, no `shell: true`; zod on `session.create` | `WIN-binary-resolution` | planned: tasks 2.3, 2.6 |
+| E | Injection via repo path, name or first prompt in the spawn | Binary from the provider registry; argv arrays, no `shell: true`; zod on `session.create`. A `.cmd`/`.bat` shim (registry kind `cmd`, e.g. npm's `claude.cmd`) only runs through cmd.exe, which re-parses the command line (twice for a shim forwarding `%*`), so argv quoting doesn't protect the prompt there (a `"` plus `&` runs commands), escaping once still injects, and escaping twice splits the prompt and drops line breaks. Every argument is exposed, not only the prompt (a `&` in the `--settings` path under the user's home splits it). So the spawn runs the shim's real target (`node <cli.js>`, or a native `.exe`), or refuses to start and says why; it never passes arguments through cmd.exe | `WIN-binary-resolution`; the registry: `apps/server/src/providers/registry.test.ts` (absolute PATH entries only, never the cwd), `conformance.test-helpers.ts` (adapters keep the prompt one argv element) | binary lookup enforced by test (2.3); the spawn, including the `cmd` kind: planned: task 2.6 |
 | E | Server writes to a PTY on its own (steering) | Only user `pty.input` reaches a PTY | HR12, ADR 0019 | designed |
 | I | Other env vars (the user's secrets) reach the agent | The CLI inherits the user env anyway; we add only `MICROMINDS_*` and OTEL vars | PLAN §5.5 | designed |
 | D | Many sessions exhaust CPU, memory or plan limits | Session cap (default 8) | PLAN §5.6 | designed |
@@ -151,7 +151,7 @@ end up printed verbatim.
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
-| I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7 | planned: tasks 2.2, 2.7 |
+| I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7; the scrubber and cap: `packages/shared/src/scrub.test.ts` | scrubber enforced by test (2.2); storage: planned: task 2.7 |
 | I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (the header reads the token only through `allowedEnvVars`); planned: task 2.6 |
 | I | Tokens or `raw` in logs; log injection via agent text | Never log tokens or `raw`; pino JSON escapes control characters | HR8; `SEC-token-exposure` | planned: task 2.7 |
 | T | Corrupt DB bricks startup | Move aside and start fresh | PLAN §5.6 | planned: task 2.11 |
@@ -187,6 +187,26 @@ rows apply if Phase 5 registers it for Gemini or Codex.
 - **A malicious agent can forge its own session's events and usage** (ADR 0013). The board
   shows what the agent reports; the terminal stays the ground truth.
 - **Scrubbing is heuristic** (ADR 0014): novel secret shapes can slip through to the local DB.
+  Known gaps, left open so ordinary text survives (task 2.2 reviews): hex-only keys (they look like
+  git hashes), random tokens under 40 characters with no known prefix, single-case letter-only
+  tokens, and secrets in YAML or JSON colon forms, `-p<pw>` / `-u user:pw` flags, cookies and
+  custom headers. Also (units 2.2-fix and 2.2-fix2): in a spaced or indented assignment, a value
+  that is a language literal or a dotted name of lower-case letters only (`hunter.two`) is taken
+  for code. A key counts as secret-named only by whole words: a lower-case `key`, a `KEY` after a
+  data-structure or modifier word (`primaryKey`, `cacheKey`, `ctrlKey`) or before a path or id
+  word (`keyPath`, `GPG_KEY_ID`, `SSH_KEY_FILE`), a leading `key` before a keyboard word
+  (`keyCode`), and any secret word before a size, type or field word (`tokenType`,
+  `PASSWORD_MIN_LENGTH`, `passwordField`) don't count; `STRIPE_KEY`, `LICENSE_KEY_CODE`,
+  `VAULT_SECRET_ID` and `SENTRY_DSN_URL` do.
+  Mid-line assignments are matched for upper-case keys only, so a lower-case query-string
+  `?access_token=…` keeps its value. An object under a secret-named key is scrubbed by its own
+  keys (`{secret: {data: …}}` keeps `data`). A single-case run joined by `-`, `_` or `+` from
+  short parts or hex hashes is taken for a name, so a vendor token shaped `<label>-<hex>` with no
+  known prefix pattern (Pulumi, Buildkite, Brevo, RubyGems, Shippo, Sourcegraph and Lob have one)
+  passes unless its key names it. A mixed-case letter-only token whose letters fall into
+  pronounceable chunks can read as words and pass (unit 2.2-fix3). Task 2.9's body limit
+  bounds the scrubber's cost (about 0.6 s per MB at worst); an input past the regex engine's limits
+  is replaced whole by the marker rather than passed through.
 - **Hooks fail open** (ADR 0009): lost events can briefly show a wrong state; never a wrong action.
 - **Opening a repo means trusting it** for git and for the CLI's own config loading, as if the
   user ran the CLI there by hand. We only promise not to widen that trust.

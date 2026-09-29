@@ -107,7 +107,8 @@ micro-minds/
     server/                     ← Fastify + ws + node-pty + better-sqlite3
       src/providers/{claude,fake}/   ← gemini/, codex/ in Phase 5
     web/                        ← Vite + React + R3F + drei + zustand + xterm.js
-  fixtures/{claude,fake}/*.jsonl
+  fixtures/{claude,fake}/*.jsonl  ← recorded provider payloads
+  fixtures/agent-events/*.jsonl   ← provider-independent AgentEvent scenarios for reduce()
   evals/harness/                ← evals for the AI dev harness (§11.1)
   .claude/                      ← settings, agents, skills, hooks
   .github/workflows/ci.yml
@@ -505,10 +506,10 @@ Each task is roughly one Claude Code session. **The MVP is Phases 0–4a, Claude
 
 **Goal:** a headless server that starts Claude agents in worktrees and produces a correct live world state.
 
-- [ ] 2.1 `packages/shared`: zod schemas, `ToolCategory`, `Thresholds`, `severity.ts`, `reduce()`. **Tests first**, replaying fixtures, including `clock.tick` scenarios. Stored events and WS frames carry a schema version (`v`), and unknown versions are handled explicitly. **Property-based tests** (fast-check) for the reducer: it never throws on any event sequence, usage totals only grow, and replaying the same events gives the same state.
-- [ ] 2.2 The scrubber, with its own test corpus plus **property-based tests**: no generated secret of a known shape survives scrubbing, and ordinary text is left alone.
-- [ ] 2.3 `ProviderAdapter` interface + `ProviderRegistry` (binary resolution, injection strategy, tool-category map), plus a **conformance test suite** that every adapter must pass.
-- [ ] 2.4 Claude adapter and fake provider, both passing conformance. The fake provider replays fixtures through `/hooks` and echoes PTY input.
+- [x] 2.1 `packages/shared`: zod schemas, `ToolCategory`, `Thresholds`, `severity.ts`, `reduce()`. **Tests first**, replaying fixtures, including `clock.tick` scenarios. Stored events and WS frames carry a schema version (`v`), and unknown versions are handled explicitly. **Property-based tests** (fast-check) for the reducer: it never throws on any event sequence, usage totals only grow, and replaying the same events gives the same state.
+- [x] 2.2 The scrubber, with its own test corpus plus **property-based tests**: no generated secret of a known shape survives scrubbing, and ordinary text is left alone.
+- [x] 2.3 `ProviderAdapter` interface + `ProviderRegistry` (binary resolution, injection strategy, tool-category map), plus a **conformance test suite** that every adapter must pass.
+- [x] 2.4 Claude adapter and fake provider, both passing conformance. The fake provider replays fixtures through `/hooks` and echoes PTY input.
 - [ ] 2.5 `WorktreeManager` (create, list, remove with a dirty check, slug rules, Windows paths), tested against a temporary repo. **Safe removal:** resolve real paths, require a worktree registered in `git worktree list` under `$MICROMINDS_HOME/worktrees`, and remove only via `git worktree remove` (never a recursive delete that follows symlinks or junctions). **Git hardening against hostile repos:** argv only, `--` before paths, `-c core.fsmonitor=false` and an empty hooks path for every git command we run.
 - [ ] 2.6 `SessionManager` (PTY spawn, env, hook-token issuing, headless xterm, resize, kill, exit) and preflight. The headless xterm discards its own replies to terminal queries, so only the browser's terminal answers the CLI. Establishes the **logging conventions** every later task follows: pino with redaction paths for tokens and payloads, `sessionId` on every line, payloads only at `debug`.
 - [ ] 2.7 `HookIngest` + `EventStore` (SQLite, append-only, retention setting) + `Clock`. **Versioned, forward-only DB migrations**, each tested against a database created by the previous schema.

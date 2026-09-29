@@ -1,0 +1,5 @@
+{
+  "mustFind": ["ARCH-shared-io"],
+  "mustNotFind": ["TEST-missing", "TEST-nondeterministic", "CONV-import-extension"],
+  "notes": "packages/shared gains an event fingerprint for dropping replayed duplicates, hashed with `createHash` from 'node:crypto', justified as 'SHA-256 is pure, so no side effect'. The rule is about what the package imports, not only about side effects: shared must run unchanged in the browser (packages/shared/CLAUDE.md), and node:crypto doesn't exist there, so the web client that imports shared breaks. A pure string key (the JSON of the facts) would do. Everything else holds: relative imports use '.ts', the tests are deterministic (fixed ids and timestamps) and cover both functions and the no-tool branch."
+}

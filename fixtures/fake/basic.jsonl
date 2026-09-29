@@ -1,0 +1,6 @@
+{"event":"prompt.submitted","text":"say hello"}
+{"event":"tool.started","tool":"Read","useId":"fake-tu-1","summary":"README.md"}
+{"event":"tool.finished","tool":"Read","useId":"fake-tu-1","summary":"README.md"}
+{"event":"tool.started","tool":"Write","useId":"fake-tu-2","summary":"hello.txt"}
+{"event":"tool.finished","tool":"Write","useId":"fake-tu-2","summary":"hello.txt"}
+{"event":"turn.finished"}

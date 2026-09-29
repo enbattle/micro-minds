@@ -1,0 +1,76 @@
+diff --git a/apps/server/src/providers/claude/detect.test.ts b/apps/server/src/providers/claude/detect.test.ts
+new file mode 100644
+index 0000000..83fe4e2
+--- /dev/null
++++ b/apps/server/src/providers/claude/detect.test.ts
+@@ -0,0 +1,39 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++const execFile = vi.hoisted(() => vi.fn());
++vi.mock('node:child_process', () => ({ execFile }));
++
++const { detectClaude } = await import('./detect.ts');
++
++type Callback = (error: Error | null, stdout: string) => void;
++
++function answer(error: Error | null, stdout: string): void {
++  execFile.mockImplementation((_cmd: string, _args: string[], _opts: object, cb: Callback) => {
++    cb(error, stdout);
++  });
++}
++
++describe('detectClaude', () => {
++  beforeEach(() => execFile.mockReset());
++
++  it('reports the installed version', async () => {
++    answer(null, '2.1.283 (Claude Code)\n');
++    await expect(detectClaude()).resolves.toEqual({ installed: true, version: '2.1.283' });
++  });
++
++  it('reports not installed when the command fails', async () => {
++    answer(new Error('ENOENT'), '');
++    await expect(detectClaude()).resolves.toEqual({ installed: false });
++  });
++
++  it('reports not installed when the output has no version', async () => {
++    answer(null, 'command not found\n');
++    await expect(detectClaude()).resolves.toEqual({ installed: false });
++  });
++
++  it('passes the timeout through', async () => {
++    answer(null, '2.1.283\n');
++    await detectClaude(1234);
++    expect(execFile.mock.calls[0]?.[2]).toMatchObject({ timeout: 1234 });
++  });
++});
+diff --git a/apps/server/src/providers/claude/detect.ts b/apps/server/src/providers/claude/detect.ts
+new file mode 100644
+index 0000000..571f25b
+--- /dev/null
++++ b/apps/server/src/providers/claude/detect.ts
+@@ -0,0 +1,25 @@
++import { execFile } from 'node:child_process';
++
++export type ClaudeInstall = { installed: true; version: string } | { installed: false };
++
++const VERSION = /\b(\d+\.\d+\.\d+)\b/;
++
++/**
++ * Preflight: is Claude Code installed, and which version (PLAN §5.6)? Runs `claude --version`
++ * with a short timeout. `shell: true` so Windows finds the npm `claude.cmd` shim as well as
++ * `claude.exe`, the same lookup a user's terminal does; the arguments are fixed, so no user
++ * input ever reaches the shell.
++ */
++export function detectClaude(timeoutMs = 5000): Promise<ClaudeInstall> {
++  return new Promise((resolve) => {
++    execFile(
++      'claude',
++      ['--version'],
++      { shell: true, timeout: timeoutMs, windowsHide: true, encoding: 'utf8' },
++      (error, stdout) => {
++        const version = error ? undefined : VERSION.exec(stdout)?.[1];
++        resolve(version === undefined ? { installed: false } : { installed: true, version });
++      },
++    );
++  });
++}

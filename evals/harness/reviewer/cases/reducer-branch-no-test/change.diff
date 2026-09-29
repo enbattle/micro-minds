@@ -1,0 +1,32 @@
+diff --git a/packages/shared/src/reduce.ts b/packages/shared/src/reduce.ts
+index a56c56a..29a7677 100644
+--- a/packages/shared/src/reduce.ts
++++ b/packages/shared/src/reduce.ts
+@@ -167,7 +167,7 @@ function agentEvent(agent: AgentState, event: AgentEvent, cfg: Thresholds): Agen
+   let next: AgentState = recover({ ...agent, lastEventAt: now, stuck: false }, now, cfg);
+   switch (event.kind) {
+     case 'prompt.submitted':
+-      next = { ...omit(next, 'attention', 'currentTool'), activity: 'thinking' };
++      next = { ...omit(next, 'attention', 'currentTool', 'label'), activity: 'thinking' };
+       break;
+     case 'tool.started': {
+       const tool = event.tool;
+@@ -223,8 +223,17 @@ function agentEvent(agent: AgentState, event: AgentEvent, cfg: Thresholds): Agen
+       if (next.parentAgentId === undefined) return agent;
+       next = { ...omit(next, 'attention', 'currentTool'), activity: 'done' };
+       break;
++    case 'context.compacting':
++      // Compaction is the agent working on its own context: show it as thinking, labelled, so
++      // the board doesn't look idle for the minute a /compact takes. The label clears on the
++      // next prompt, and a compaction during a tool call keeps that tool as the current one.
++      next = {
++        ...next,
++        activity: next.currentTool === undefined ? 'thinking' : next.activity,
++        label: 'compacting',
++      };
++      break;
+     default:
+-      // context.compacting keeps the activity (§4.3 has no row for it).
+       break;
+   }
+   if (event.kind !== 'turn.failed' && isBlockingError(event.errorClass)) {

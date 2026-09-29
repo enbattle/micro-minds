@@ -1,0 +1,5 @@
+{
+  "mustFind": ["TEST-nondeterministic"],
+  "mustNotFind": ["TEST-missing", "CONV-import-extension", "CONV-erasable-syntax"],
+  "notes": "A test of the stuck rule's boundary built on the wall clock and randomness. The first test reads Date.now() twice (`start` for the prompt, a fresh Date.now() for the tick), so the quiet time is the threshold plus however many ms passed between the calls: it passes only when both calls land on the same millisecond. Event ids come from Math.random(), so every run feeds reduce() different data, and a failure can't be replayed. Tests must not depend on wall-clock time or randomness without fakes: a fixed T0 and fixed ids would make both tests exact and repeatable. Everything else holds: it tests behavior through reduce() (no internals), imports use '.ts', and there is no non-erasable syntax."
+}

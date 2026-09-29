@@ -1,0 +1,5 @@
+{
+  "mustFind": ["ARCH-provider-leak"],
+  "mustNotFind": ["HR7-unknown-event-throws", "CONV-import-extension", "TEST-missing"],
+  "notes": "A shared fallback table in the provider-independent apps/server/src/providers/categories.ts maps Claude Code's tool names (Read, Edit, Bash, Task, Agent, AskUserQuestion, WebFetch) to categories, justified as names 'every coding CLI ships'. They are Claude's names, not a cross-provider standard: provider tool names belong only in apps/server/src/providers/<name>/, and each adapter supplies its own map (D10). With the fallback, a Gemini or Codex tool that happens to share a name (a Gemini 'Edit' with other semantics) is silently categorized by Claude's table. Everything else holds: own-property lookups make prototype names unmapped instead of throwing, unknown tools become 'other', imports use '.ts', and the tests cover every branch."
+}

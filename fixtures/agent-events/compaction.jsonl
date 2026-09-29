@@ -1,0 +1,13 @@
+{"v":1,"id":"01K6B010000000000000000000","ts":1790000000000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"session.started"}
+{"v":1,"id":"01K6B010000000000000000001","ts":1790000002000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"prompt.submitted"}
+{"v":1,"id":"01K6B010000000000000000002","ts":1790000004000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"tool.started","tool":{"name":"Read","category":"read","useId":"toolu_01"}}
+{"v":1,"id":"01K6B010000000000000000003","ts":1790000004500,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"tool.finished","tool":{"name":"Read","category":"read","useId":"toolu_01"}}
+{"v":1,"id":"01K6B010000000000000000004","ts":1790000005000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"tool.started","tool":{"name":"Read","category":"read","useId":"toolu_02"}}
+{"v":1,"id":"01K6B010000000000000000005","ts":1790000005500,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"tool.finished","tool":{"name":"Read","category":"read","useId":"toolu_02"}}
+{"v":1,"id":"01K6B010000000000000000006","ts":1790000009000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"turn.finished"}
+{"v":1,"id":"01K6B010000000000000000007","ts":1790000020000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"prompt.submitted"}
+{"v":1,"id":"01K6B010000000000000000008","ts":1790000021000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"turn.finished"}
+{"v":1,"id":"01K6B010000000000000000009","ts":1790000021500,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"context.compacting"}
+{"v":1,"id":"01K6B010000000000000000010","ts":1790000030500,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"a0d1e2f3a4b5c6d7","kind":"agent.finished","parentAgentId":"01K6A2B3C4D5E6F7G8H9J0K1M2"}
+{"v":1,"id":"01K6B010000000000000000011","ts":1790000081000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"attention.idle"}
+{"v":1,"id":"01K6B010000000000000000012","ts":1790000090000,"sessionId":"01K6A2B3C4D5E6F7G8H9J0K1M2","provider":"claude","agentId":"01K6A2B3C4D5E6F7G8H9J0K1M2","kind":"session.ended"}

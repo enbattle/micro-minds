@@ -1,0 +1,85 @@
+diff --git a/packages/shared/src/fingerprint.test.ts b/packages/shared/src/fingerprint.test.ts
+new file mode 100644
+index 0000000..dee5e1d
+--- /dev/null
++++ b/packages/shared/src/fingerprint.test.ts
+@@ -0,0 +1,39 @@
++import { describe, expect, it } from 'vitest';
++import type { AgentEvent } from './events.ts';
++import { dedupeEvents, eventFingerprint } from './fingerprint.ts';
++
++const base: AgentEvent = {
++  v: 1,
++  id: '01K6D00000000000000000000A',
++  ts: 1_790_000_000_000,
++  sessionId: '01K6A2B3C4D5E6F7G8H9J0K1M2',
++  provider: 'claude',
++  agentId: '01K6A2B3C4D5E6F7G8H9J0K1M2',
++  kind: 'tool.started',
++  tool: { name: 'Bash', category: 'exec', useId: 'toolu_01' },
++};
++
++describe('eventFingerprint', () => {
++  it('is the same for the same facts under a different id or raw', () => {
++    const again = { ...base, id: '01K6D00000000000000000000B', raw: { x: 1 } };
++    expect(eventFingerprint(again)).toBe(eventFingerprint(base));
++  });
++
++  it('differs when a fact differs', () => {
++    expect(eventFingerprint({ ...base, ts: base.ts + 1 })).not.toBe(eventFingerprint(base));
++    expect(eventFingerprint({ ...base, kind: 'tool.finished' })).not.toBe(eventFingerprint(base));
++  });
++});
++
++describe('dedupeEvents', () => {
++  it('keeps the first of each fact, in order', () => {
++    const second = { ...base, ts: base.ts + 5, kind: 'tool.finished' as const };
++    const replayed = { ...base, id: '01K6D00000000000000000000C' };
++    expect(dedupeEvents([base, second, replayed])).toEqual([base, second]);
++  });
++
++  it('keeps events whose tool is absent', () => {
++    const { tool: _tool, ...noTool } = base;
++    expect(dedupeEvents([noTool, noTool])).toEqual([noTool]);
++  });
++});
+diff --git a/packages/shared/src/fingerprint.ts b/packages/shared/src/fingerprint.ts
+new file mode 100644
+index 0000000..1aa6e7a
+--- /dev/null
++++ b/packages/shared/src/fingerprint.ts
+@@ -0,0 +1,34 @@
++// A stable fingerprint of an event's facts, so a client that receives the same event twice (a WS
++// reconnect replays the tail) can drop the duplicate before reduce() sees it. SHA-256 is a pure
++// function of its input, so this adds no side effect to the package.
++import { createHash } from 'node:crypto';
++import type { AgentEvent } from './events.ts';
++
++/** The fields that make two events the same fact; `id` and `raw` are left out on purpose. */
++function facts(event: AgentEvent): unknown[] {
++  return [
++    event.sessionId,
++    event.agentId,
++    event.kind,
++    event.ts,
++    event.tool?.useId ?? null,
++    event.tool?.name ?? null,
++  ];
++}
++
++export function eventFingerprint(event: AgentEvent): string {
++  return createHash('sha256').update(JSON.stringify(facts(event))).digest('hex');
++}
++
++/** Keeps the first of each fingerprint, in order. */
++export function dedupeEvents(events: readonly AgentEvent[]): AgentEvent[] {
++  const seen = new Set<string>();
++  const kept: AgentEvent[] = [];
++  for (const event of events) {
++    const key = eventFingerprint(event);
++    if (seen.has(key)) continue;
++    seen.add(key);
++    kept.push(event);
++  }
++  return kept;
++}

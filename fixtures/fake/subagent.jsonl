@@ -1,0 +1,8 @@
+{"event":"prompt.submitted","text":"explore the repo"}
+{"event":"tool.started","tool":"Agent","useId":"fake-tu-1","summary":"Explore the repo"}
+{"event":"agent.spawned","agent":"fake-sub-1","text":"Explore"}
+{"event":"tool.started","tool":"Bash","useId":"fake-tu-2","summary":"ls","agent":"fake-sub-1"}
+{"event":"tool.finished","tool":"Bash","useId":"fake-tu-2","summary":"ls","agent":"fake-sub-1"}
+{"event":"agent.finished","agent":"fake-sub-1"}
+{"event":"tool.finished","tool":"Agent","useId":"fake-tu-1","summary":"Explore the repo"}
+{"event":"turn.finished"}

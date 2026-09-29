@@ -1,0 +1,5 @@
+{
+  "mustFind": ["TEST-criteria"],
+  "mustNotFind": ["ARCH-shared-io", "TEST-nondeterministic", "CONV-import-extension"],
+  "notes": "A crash on the board should read 'crashed (exit code 3)'. The change adds a helper describeCrash() in reduce.ts and wires it into session.crashed, but the only test imports the helper straight from reduce.ts and checks its string mapping. No test drives reduce() with a session.crashed event and looks at the agent's healthReason, so deleting the wiring (or passing the wrong field) would leave every test green: the tests check an internal, not the behavior a caller sees. Everything else holds: the helper is pure (no I/O, no clock), the tests are deterministic tables, and imports use '.ts'."
+}
