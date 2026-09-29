@@ -187,6 +187,15 @@ rows apply if Phase 5 registers it for Gemini or Codex.
 - **A malicious agent can forge its own session's events and usage** (ADR 0013). The board
   shows what the agent reports; the terminal stays the ground truth.
 - **Scrubbing is heuristic** (ADR 0014): novel secret shapes can slip through to the local DB.
+  Known gaps, left open so ordinary text survives (task 2.2 reviews): hex-only keys (they look like
+  git hashes), random tokens under 40 characters with no known prefix, single-case letter-only
+  tokens, and secrets in YAML or JSON colon forms, `-p<pw>` / `-u user:pw` flags, cookies and
+  custom headers. Also (unit 2.2-fix): in a spaced or indented assignment, a value that is a
+  language literal or an all-lower-case dotted name (`hunter.two`) is taken for code; a key counts
+  as secret-named only by whole words (a bare `key` or `primaryKey` doesn't, `API_KEY` does); and
+  a single-case run joined from short `-`/`_` parts is taken for a name. Task 2.9's body limit
+  bounds the scrubber's cost (about 0.6 s per MB at worst); an input past the regex engine's limits
+  is replaced whole by the marker rather than passed through.
 - **Hooks fail open** (ADR 0009): lost events can briefly show a wrong state; never a wrong action.
 - **Opening a repo means trusting it** for git and for the CLI's own config loading, as if the
   user ran the CLI there by hand. We only promise not to widen that trust.

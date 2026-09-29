@@ -84,8 +84,18 @@ function secretFlag(flag: string): boolean {
 /** A `KEY=value` line of env-like content: the value runs to the end of the line. */
 const ENV_LINE = /^([ \t]*(?:export[ \t]+)?)([A-Za-z_][A-Za-z0-9_]*)([ \t]*=[ \t]*)(.*)$/gm;
 
-/** `KEY=value` in the middle of a shell line (`cd app && API_KEY=…`, `env A=… B=…`, `-e K=…`). */
+/**
+ * `KEY=value` in the middle of a shell line (`cd app && API_KEY=…`, `env A=… B=…`, `-e K=…`): the
+ * value runs to the next whitespace or shell operator, whatever it holds (`P@ss,w0rd!`).
+ */
 const SHELL_ASSIGNMENT = /(?<=^|[\s;&|])([A-Z][A-Z0-9_]*=)("[^"\r\n]*"|'[^'\r\n]*'|[^\s;&|'"]+)/gm;
+
+/**
+ * `KEY=value` inside quotes, brackets or a list (`-e "K=…"`, `["K=…"]`, `(K=…)`, `A=1,K=…`, a
+ * literal `\n` escape): here the value also ends at the punctuation that closes its context.
+ */
+const NESTED_ASSIGNMENT =
+  /(?<=["'=(,:[]|\\n)([A-Z][A-Z0-9_]*=)("[^"\r\n]*"|'[^'\r\n]*'|[^\s;&|'"()[\],\\]+)/gm;
 
 /** `_`-separated key parts that name a secret (`DB_PASS`, `SENTRY_DSN`; not `TOKENIZERS`). */
 const SECRET_PARTS = new Set([
@@ -103,16 +113,95 @@ const SECRET_PARTS = new Set([
   'DSN',
 ]);
 
+/** Words that make `KEY` a secret (`API_KEY`, `SECRET_KEY`, `privateKey`); alone it's structure. */
+const KEY_QUALIFIERS = new Set([
+  'API',
+  'SECRET',
+  'PRIVATE',
+  'ACCESS',
+  'CLIENT',
+  'AUTH',
+  'SIGNING',
+  'ENCRYPTION',
+  'MASTER',
+  'LICENSE',
+  'SSH',
+  'GPG',
+  'HMAC',
+  'JWT',
+]);
+
+/** A word after the secret word that describes it instead (`tokenType`, `PASSWORD_MIN_LENGTH`). */
+const DESCRIPTORS = new Set([
+  'TYPE',
+  'TYPES',
+  'COUNT',
+  'LENGTH',
+  'LEN',
+  'MIN',
+  'MAX',
+  'LIMIT',
+  'SIZE',
+  'POLICY',
+  'PATH',
+  'FILE',
+  'DIR',
+  'NAME',
+  'ID',
+  'HINT',
+  'HEADER',
+  'FIELD',
+  'PARAM',
+  'FORMAT',
+  'THROUGH',
+  'USAGE',
+  'PREFIX',
+  'EXPIRY',
+  'EXPIRES',
+  'TTL',
+  'URL',
+  'ENDPOINT',
+  'INDEX',
+]);
+
+/**
+ * A key naming a secret as one of its words, whatever the case style: `DB_PASSWORD`, `api-key`,
+ * `apiKey`, `accessToken`, `SECRET_KEY_BASE` (not `TOKENIZERS`, `keyboard`, `monkey`, a bare
+ * `key`, `primaryKey`, `tokenType`, `PASSWORD_MIN_LENGTH`).
+ */
 function secretKey(key: string): boolean {
-  const upper = key.toUpperCase();
   // PWD alone is the shell's working directory, not a password.
-  if (upper === 'PWD') return false;
-  return upper.split('_').some((part) => SECRET_PARTS.has(part));
+  if (key.toUpperCase() === 'PWD') return false;
+  const parts = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toUpperCase()
+    .split(/[-_\s.]+/)
+    .filter((part) => part !== '');
+  return parts.some((part, i) => {
+    if (!SECRET_PARTS.has(part)) return false;
+    const next = parts[i + 1];
+    if (next !== undefined && DESCRIPTORS.has(next)) return false;
+    return part !== 'KEY' || KEY_QUALIFIERS.has(parts[i - 1] ?? '');
+  });
 }
 
 /** A value that is code, not a literal: a call, a lookup, a statement. */
 function codeExpression(value: string): boolean {
   return /[()[\]{};]/.test(value) || /^(?:await|new)\s/.test(value);
+}
+
+const LITERAL = /^(?:None|null|undefined|nil|NULL|True|False|true|false)$/;
+/** A dotted name in code style: every segment starts lower-case (`item.name`, `config.token`). */
+const DOTTED_NAME = /^[a-z_$][\w$]*(?:\.[a-z_$][\w$]*)+$/;
+
+/**
+ * In a line that looks like source (indented, or spaces around `=`), a language literal or a
+ * code-style dotted name (`token = None`, `key = item.name`) is code, not a secret value. A dotted
+ * passphrase with capitals (`Correct.Horse.Battery`) is still a secret.
+ */
+function sourceValue(lead: string, eq: string, value: string): boolean {
+  const sourceLike = lead !== '' || eq.trim() !== eq;
+  return sourceLike && (LITERAL.test(value) || DOTTED_NAME.test(value));
 }
 
 function isQuoted(value: string): boolean {
@@ -125,7 +214,6 @@ function redactValue(value: string): string {
 }
 
 /** Runs long enough to be a random token: base64 and base64url characters. */
-const LONG_RUN = /[A-Za-z0-9+/=_-]{40,}/g;
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const HEX_OR_UUID = /^[0-9A-Fa-f-]+$/;
 const TOKEN_PARTS = /[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+|[^A-Za-z0-9]+/g;
@@ -168,11 +256,27 @@ function pathSegment(segment: string): boolean {
   );
 }
 
+/**
+ * A single-case run made of words or digit groups joined by `-` or `_` (`micro-minds-server`,
+ * `MAXIMUM_CONCURRENT_SESSIONS`); a random single-case token isn't.
+ */
+function singleCaseWords(run: string): boolean {
+  const parts = run.split(/[-_]+/).filter((part) => part !== '');
+  // Names are joined from short parts (`k8s`, `python3`, `S3`, `2024`, `strengths`); a random
+  // token is one long unbroken part.
+  return parts.length > 1 && parts.every((part) => part.length <= 16);
+}
+
 function highEntropy(run: string): boolean {
-  if (!/[A-Z]/.test(run) || !/[a-z]/.test(run)) return false;
   if (HEX_OR_UUID.test(run)) return false;
   if (run.includes('/')) return !run.split('/').every(pathSegment);
-  return !wordLike(run);
+  const upper = /[A-Z]/.test(run);
+  const lower = /[a-z]/.test(run);
+  if (!upper && !lower) return false;
+  if (upper && lower) return !wordLike(run);
+  // Single case: random tokens (lower-case alphanumeric, base32) mix in digits; a run of one
+  // case with no digit is text (a word, filler, a repeated letter).
+  return /\d/.test(run) && !singleCaseWords(run);
 }
 
 function bearerToken(token: string): boolean {
@@ -180,9 +284,56 @@ function bearerToken(token: string): boolean {
   return token.length >= 8 && (/\d/.test(token) || token.length >= 20);
 }
 
+/** base64 and base64url characters: what a random token is made of. */
+function tokenChar(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 43 || // +
+    code === 47 || // /
+    code === 61 || // =
+    code === 95 || // _
+    code === 45 // -
+  );
+}
+
+/**
+ * Replaces each high-entropy run of 40 or more token characters. A plain scan, not a regex: a
+ * single multi-megabyte run would overflow the regex engine's stack.
+ */
+function scrubLongRuns(text: string): string {
+  let out = '';
+  let from = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (!tokenChar(text.charCodeAt(i))) {
+      i++;
+      continue;
+    }
+    const start = i;
+    while (i < text.length && tokenChar(text.charCodeAt(i))) i++;
+    if (i - start >= 40 && highEntropy(text.slice(start, i))) {
+      out += `${text.slice(from, start)}${M}`;
+      from = i;
+    }
+  }
+  return out + text.slice(from);
+}
+
 /** Replaces every secret in `text` with REDACTION_MARKER and keeps the text around it. */
 export function scrubText(text: string): string {
   if (typeof text !== 'string') return text;
+  try {
+    return scrubTextPasses(text);
+  } catch {
+    // Fail closed: if a pass can't finish (an input past the engine's limits), nothing of the
+    // text is kept rather than all of it.
+    return M;
+  }
+}
+
+function scrubTextPasses(text: string): string {
   let out = scrubPem(text);
   for (const pattern of KNOWN) out = out.replace(pattern, M);
   out = out.replace(
@@ -199,15 +350,20 @@ export function scrubText(text: string): string {
   out = out.replace(ENV_LINE, (whole, lead: string, key: string, eq: string, value: string) => {
     const trimmed = value.trim();
     if (!secretKey(key) || trimmed === '') return whole;
-    if (!isQuoted(trimmed) && codeExpression(trimmed)) return whole;
+    if (!isQuoted(trimmed) && (codeExpression(trimmed) || sourceValue(lead, eq, trimmed))) {
+      return whole;
+    }
     return `${lead}${key}${eq}${redactValue(trimmed)}`;
   });
   out = out.replace(SHELL_ASSIGNMENT, (whole, assign: string, value: string) =>
+    secretKey(assign.slice(0, -1)) ? `${assign}${redactValue(value)}` : whole,
+  );
+  out = out.replace(NESTED_ASSIGNMENT, (whole, assign: string, value: string) =>
     secretKey(assign.slice(0, -1)) && (isQuoted(value) || !codeExpression(value))
       ? `${assign}${redactValue(value)}`
       : whole,
   );
-  return out.replace(LONG_RUN, (run) => (highEntropy(run) ? M : run));
+  return scrubLongRuns(out);
 }
 
 export interface ScrubRawOptions {
@@ -232,6 +388,24 @@ function setOwn(target: Record<string, unknown>, key: string, value: unknown): v
   });
 }
 
+/**
+ * A value under a secret-named key: strings, numbers and booleans become the marker, and so do
+ * those inside an array; an object is scrubbed as usual (its own keys decide).
+ */
+function maskSecret(value: unknown, depth: number, seen: Set<object>): unknown {
+  if (typeof value === 'string') return value === '' ? value : M;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return M;
+  }
+  if (Array.isArray(value) && depth < MAX_DEPTH) {
+    return value.map((item) => {
+      const masked = maskSecret(item, depth + 1, seen);
+      return masked === undefined ? null : masked;
+    });
+  }
+  return scrubValue(value, depth, seen);
+}
+
 function scrubValue(value: unknown, depth: number, seen: Set<object>): unknown {
   if (typeof value === 'string') return scrubText(value);
   if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
@@ -252,7 +426,11 @@ function scrubValue(value: unknown, depth: number, seen: Set<object>): unknown {
     }
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
-      const scrubbed = scrubValue(item, depth + 1, seen);
+      // A value under a secret-named key (`password`, `apiKey`) is a secret whatever it looks
+      // like: the structured form of a secret `KEY=value` line.
+      const scrubbed = secretKey(key)
+        ? maskSecret(item, depth + 1, seen)
+        : scrubValue(item, depth + 1, seen);
       if (scrubbed !== undefined) setOwn(out, scrubText(key), scrubbed);
     }
     return out;
