@@ -1,0 +1,77 @@
+diff --git a/apps/server/src/providers/claude/summary.test.ts b/apps/server/src/providers/claude/summary.test.ts
+new file mode 100644
+index 0000000..a6dbf7e
+--- /dev/null
++++ b/apps/server/src/providers/claude/summary.test.ts
+@@ -0,0 +1,36 @@
++import { describe, expect, it } from 'vitest';
++import { toolSummary } from './summary.ts';
++
++describe('toolSummary', () => {
++  it.each([
++    ['Bash', { command: 'npm test' }, 'npm test'],
++    ['Read', { file_path: 'src/index.ts' }, 'src/index.ts'],
++    ['Edit', { file_path: 'src/reduce.ts', old_string: 'a', new_string: 'b' }, 'src/reduce.ts'],
++    ['Write', { file_path: 'notes.txt', content: 'hello' }, 'notes.txt'],
++    ['Agent', { description: 'List files', prompt: 'long prompt' }, 'List files'],
++    ['Task', { description: 'Review', prompt: 'long prompt' }, 'Review'],
++  ])('%s → its summary', (tool, input, expected) => {
++    expect(toolSummary(tool, input)).toBe(expected);
++  });
++
++  it('joins a multi-line command into one line', () => {
++    expect(toolSummary('Bash', { command: 'git add .\n  git commit -m "x"' })).toBe(
++      'git add . git commit -m "x"',
++    );
++  });
++
++  it('cuts a long command to 120 characters with an ellipsis', () => {
++    const summary = toolSummary('Bash', { command: 'x'.repeat(300) });
++    expect(summary).toHaveLength(120);
++    expect(summary?.endsWith('…')).toBe(true);
++  });
++
++  it.each([
++    ['WebFetch', { url: 'https://example.com' }],
++    ['Bash', { command: 42 }],
++    ['Read', null],
++    ['Bash', 'not an object'],
++  ])('%s with %j → no summary', (tool, input) => {
++    expect(toolSummary(tool, input)).toBeUndefined();
++  });
++});
+diff --git a/apps/server/src/providers/claude/summary.ts b/apps/server/src/providers/claude/summary.ts
+new file mode 100644
+index 0000000..ea53a75
+--- /dev/null
++++ b/apps/server/src/providers/claude/summary.ts
+@@ -0,0 +1,29 @@
++// The one-line `tool.summary` the board shows for a Claude tool call (PLAN §4.1): what the tool is
++// working on, cut to fit a row. The board renders it as text, never as HTML, so it only needs to be
++// short and single-line here.
++
++const MAX_SUMMARY = 120;
++
++function oneLine(text: string): string {
++  const line = text.replace(/\s+/g, ' ').trim();
++  return line.length > MAX_SUMMARY ? `${line.slice(0, MAX_SUMMARY - 1)}…` : line;
++}
++
++function stringField(input: unknown, key: string): string | undefined {
++  if (typeof input !== 'object' || input === null) return undefined;
++  const value = (input as Record<string, unknown>)[key];
++  return typeof value === 'string' ? value : undefined;
++}
++
++/** Bash: the command; file tools: the path; Agent: its description; anything else: nothing. */
++export function toolSummary(toolName: string, toolInput: unknown): string | undefined {
++  const source =
++    toolName === 'Bash'
++      ? stringField(toolInput, 'command')
++      : toolName === 'Read' || toolName === 'Edit' || toolName === 'Write'
++        ? stringField(toolInput, 'file_path')
++        : toolName === 'Agent' || toolName === 'Task'
++          ? stringField(toolInput, 'description')
++          : undefined;
++  return source === undefined ? undefined : oneLine(source);
++}

@@ -21,6 +21,7 @@ export {
 } from './frames.ts';
 export { isProvider, PROVIDERS, type Provider } from './provider.ts';
 export { createWorld, reduce } from './reduce.ts';
+export { REDACTION_MARKER, type ScrubRawOptions, scrubRaw, scrubText } from './scrub.ts';
 export type {
   Activity,
   AgentState,

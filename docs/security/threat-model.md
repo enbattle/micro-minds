@@ -93,7 +93,7 @@ E elevation of privilege.
 | S | Session A's token posts events or usage for session B | Token checked against the `sessionId` of the request, constant time | ADR 0013, 0025; HR4 | planned: task 2.9 |
 | S | Agent forges its own session's events (fake "done", hide a hand) | None possible; the hook token is in its env | ADR 0013 | accepted |
 | I | Unknown-session probing, error detail leaks | 404 with no body details | PLAN §9.6 | planned: task 2.9 |
-| I | Payload secrets stored or broadcast | Scrub `text`, `tool.summary`, `raw`; cap `raw`; strip `raw` from WS | ADR 0014; HR8 | planned: tasks 2.2, 2.9 |
+| I | Payload secrets stored or broadcast | Scrub `text`, `tool.summary`, `raw`; cap `raw`; strip `raw` from WS | ADR 0014; HR8; the scrubber: `packages/shared/src/scrub.test.ts`, `scrub.property.test.ts` | scrubber enforced by test (2.2); using it and stripping `raw`: planned: task 2.9 |
 | I | Prompts or tool details in telemetry | Exporter prompt and tool-detail logging off; logs exporter off; loopback endpoint only | PLAN §5.7; ADR 0030; `SEC-telemetry-config` | planned: task 2.14 (verified: task 1.8, prompt and response text arrive `<REDACTED>`) |
 | I | Account identifiers in telemetry (`user.email`, `user.id`, `organization.id` on every metric point) stored or logged | Ingest reads only value, model, type, query source and agent type; account attributes dropped before storage or logs; no telemetry `raw` | ADR 0030 | planned: task 2.14 |
 | T | A user's own settings redirect or break the session's telemetry | Telemetry config in the per-session settings file, which outranks user settings (verified with the generic endpoint variable; inferred for the per-signal one ADR 0030 uses); if a user's own OTLP headers replace ours, the result is 401s, shown as usage unavailable (expected, not recorded) | ADR 0030 | verified: task 1.8 (generic endpoint); designed (per-signal endpoint, headers) |
@@ -151,7 +151,7 @@ end up printed verbatim.
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
-| I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7 | planned: tasks 2.2, 2.7 |
+| I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7; the scrubber and cap: `packages/shared/src/scrub.test.ts` | scrubber enforced by test (2.2); storage: planned: task 2.7 |
 | I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (the header reads the token only through `allowedEnvVars`); planned: task 2.6 |
 | I | Tokens or `raw` in logs; log injection via agent text | Never log tokens or `raw`; pino JSON escapes control characters | HR8; `SEC-token-exposure` | planned: task 2.7 |
 | T | Corrupt DB bricks startup | Move aside and start fresh | PLAN §5.6 | planned: task 2.11 |

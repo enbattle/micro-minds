@@ -1,0 +1,5 @@
+{
+  "mustFind": ["HR8-unscrubbed-output"],
+  "mustNotFind": ["ARCH-provider-leak", "HR7-unknown-event-throws", "CONV-import-extension"],
+  "notes": "The Claude adapter builds tool.summary from the raw tool input: the Bash command, a file path, an Agent description. It joins and cuts it to one 120-character line and argues the board renders text, not HTML, so nothing else is needed. But a command routinely carries secrets (`curl -H \"Authorization: Bearer …\"`, `export API_KEY=…`, a token piped to `gh auth login`), and the summary is stored and broadcast to every tab: hard rule 8 / HR8 require tool.summary to pass through the scrubber (scrubText from @micro-minds/shared), and a cut to 120 characters is not a scrub (a short token fits whole). The rule's own example is a summary built from tool_input.command unscrubbed. Everything else holds: the code sits in apps/server/src/providers/claude/ where Claude tool names belong, unknown tools and malformed inputs return undefined instead of throwing, and imports use '.ts'."
+}

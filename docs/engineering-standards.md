@@ -28,7 +28,7 @@ in PRs, with no automated check).
 | Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
 | Coverage thresholds for `apps/server` and `packages/hook-relay` | Added with the first real code in each | Scheduled: 2.6 (`apps/server`); `packages/hook-relay` when Phase 5 builds the relay (D29) |
 | Coverage thresholds for `apps/web` | Added with the web shell | Scheduled: 3.1 |
-| Property-based tests for the reducer and scrubber | fast-check suites (`packages/shared/src/reduce.property.test.ts`) | Scheduled: 2.2 |
+| Property-based tests for the reducer and scrubber | fast-check suites (`packages/shared/src/reduce.property.test.ts`, `scrub.property.test.ts`) | Enforced |
 | Never call real provider CLIs in tests | reviewer `TEST-real-cli`; fake provider | Convention |
 | Deterministic tests (no wall clock or randomness in shared) | reviewer `TEST-nondeterministic`, `HR9-impure-reducer` | Convention |
 | End-to-end smoke tests with the fake provider | Playwright | Scheduled: 3.9 |

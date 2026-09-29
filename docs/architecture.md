@@ -38,6 +38,7 @@ Imports only go *into* `packages/shared`, never out of it. Apps never import eac
 | `packages/shared/src/state.ts` | `AgentState`, `WorldState` and the snapshot's world schema | 2.1 |
 | `packages/shared/src/thresholds.ts`, `severity.ts` | `Thresholds` / `DEFAULT_THRESHOLDS` (§6) and the health rules: failure window, repeated failures, stuck, recovery, errors | 2.1 |
 | `packages/shared/src/reduce.ts` | `createWorld()` and the pure `reduce()` (§4.3); time only via `clock.tick` | 2.1 |
+| `packages/shared/src/scrub.ts` | The scrubber (D14): `scrubText()` for `text` and `tool.summary`, `scrubRaw()` for the stored `raw` (scrubbed, then size-capped) | 2.2 |
 | `fixtures/agent-events/` | Provider-independent `AgentEvent` scenarios (the Phase 1 recordings, plus `clock.tick` scenarios) replayed through `reduce()` | 2.1 |
 | `packages/hook-relay/src/main.ts` | Fail-open no-op relay entry (invariant test only) | 0.1 |
 | `apps/server/src/pty/pty.smoke.test.ts` | node-pty/ConPTY smoke test; no server code yet | 0.3 |
