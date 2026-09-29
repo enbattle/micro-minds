@@ -550,7 +550,7 @@ describe('R7: identifiers and word paths stay, digit-free random tokens are reda
           `session secret: ${M} (rotated)`,
         );
       }),
-      { numRuns: 200 },
+      { seed: 20_260_928, numRuns: 200 },
     );
   });
 
