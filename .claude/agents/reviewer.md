@@ -52,6 +52,8 @@ Your job is to find the strongest case against the change before you approve it 
 
 The "Default" column below is a starting point. Raise or lower it only with a reason stated in the finding.
 
+**Every finding names its realistic trigger**: a real caller or input that reaches it (a hook payload, a WS frame, an agent's command, a user action), a plausible edit, or a documented threat. A finding with none (reachable only by our own in-process code misbehaving, or by an input nothing produces) is **theoretical**: say so in the summary and rate it **minor**. The exception: a theoretical finding in a severe class (credentials or secret leakage, a hard rule, PLAN §9 security, data loss) keeps its severity; rarity alone never downgrades those.
+
 ## Rule catalog
 
 Use these IDs exactly. Use a `GEN-*` ID only when no specific rule fits.
