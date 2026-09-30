@@ -83,7 +83,56 @@ const HOME_PREFIX =
 const POSIX_DRIVE_PREFIX = /^\/(?:cygdrive\/|mnt\/)?([a-z])(?=\/|$)/i;
 // PowerShell's env: drive (listing it dumps every variable); `env:PATH` (one variable) is fine.
 const ENV_DRIVE = /^env:[\\/]?\*?$/i;
+// POSIX short-flag clusters with r/R (`-r`, `-rf`, `-aR`) and `--recursive`.
 const RECURSIVE_FLAG = /^(?:-[a-z]*r[a-z]*|--recursive)$/i;
+// PowerShell's recursion parameters: `-Recurse` and its abbreviations, its alias `-s`, `-Depth`,
+// with or without a `:$true` value. Other parameters that happen to contain an r (`-Raw`,
+// `-Pattern`, `-First`) aren't recursive.
+const PS_RECURSIVE_FLAG = /^-(?:r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|s|depth)(?::.*)?$/i;
+// A PowerShell cmdlet name (`Get-ChildItem`, `Select-String`).
+const CMDLET = /^[a-z]+-[a-z]+$/i;
+// PowerShell aliases of file cmdlets: their flags are checked both ways (`ls -R`, `cp -Rf`).
+const PS_FILE_ALIASES: ReadonlySet<string> = new Set([
+  'ls',
+  'dir',
+  'gci',
+  'cp',
+  'copy',
+  'cpi',
+  'rm',
+  'del',
+  'erase',
+  'ri',
+  'rd',
+  'rmdir',
+  'mv',
+  'move',
+  'mi',
+]);
+// PowerShell aliases of other cmdlets: PowerShell parameters only (`sls -Pattern`, `gc -Raw`).
+const PS_OTHER_ALIASES: ReadonlySet<string> = new Set([
+  'gc',
+  'type',
+  'sls',
+  'select',
+  'where',
+  'foreach',
+  'sort',
+  'measure',
+  'group',
+  'ft',
+  'fl',
+  'echo',
+]);
+// Commands that change directory: `cd ~` followed by a relative `.claude/...` path reaches it.
+const CHANGE_DIR_COMMANDS: ReadonlySet<string> = new Set([
+  'cd',
+  'chdir',
+  'pushd',
+  'set-location',
+  'sl',
+  'push-location',
+]);
 const DOTNET_ENV_DUMP = /GetEnvironmentVariables\s*\(/i;
 
 const ALLOW: Decision = { decision: 'allow' };
@@ -298,7 +347,27 @@ function isEnvDump(tokens: readonly string[]): boolean {
   return tokens.some((token) => ENV_DRIVE.test(token));
 }
 
-function decideCommand(command: string, base: string, ctx: GuardContext): Decision {
+/**
+ * Whether a simple command passes a recursion flag. In PowerShell a cmdlet (or an alias of one)
+ * takes PowerShell parameters; anything else there is a native tool (Git's `grep`, `cp`) with POSIX
+ * flags. File-cmdlet aliases get both checks.
+ */
+function hasRecursiveFlag(words: readonly string[], powershell: boolean): boolean {
+  const posix = words.some((word) => RECURSIVE_FLAG.test(word));
+  if (!powershell) return posix;
+  const ps = words.some((word) => PS_RECURSIVE_FLAG.test(word));
+  const first = (words[0] ?? '').toLowerCase();
+  if (PS_FILE_ALIASES.has(first)) return ps || posix;
+  if (CMDLET.test(first) || PS_OTHER_ALIASES.has(first)) return ps;
+  return posix;
+}
+
+function decideCommand(
+  command: string,
+  base: string,
+  ctx: GuardContext,
+  powershell: boolean,
+): Decision {
   if (DOTNET_ENV_DUMP.test(command)) return deny(REASONS.envDump);
 
   const subcommands = splitSubcommands(command).map(tokenize);
@@ -309,17 +378,32 @@ function decideCommand(command: string, base: string, ctx: GuardContext): Decisi
     if (decision.decision === 'deny') return decision;
   }
 
-  // `cd ~ && cat .claude/x`, `Join-Path $HOME .codex`: a bare home reference plus a relative
-  // path that starts with a config dir name.
-  const mentionsHome = tokens.some(isBareHomeReference);
+  // `cd ~ && cat .claude/x`, `Join-Path $HOME .codex`: a relative path that starts with a config
+  // dir name, after a change to the home directory or next to a home reference in the same
+  // command. A `~` elsewhere (inside a string or a heredoc's text) doesn't make `.claude/...`
+  // mean the home one.
   const startsWithConfigDir = (token: string): boolean => {
     const first = token.split(/[\\/]+/)[0];
     return first !== undefined && isProtectedDirName(first);
   };
-  if (mentionsHome && tokens.some(startsWithConfigDir)) return deny(REASONS.homeConfig);
+  // At any word position: `bash -c "cd ~ && …`, `{ cd ~; …`, `builtin cd ~`, `if (…) { sl ~ }`.
+  const changesToHome = (words: readonly string[]): boolean =>
+    words.some(
+      (word, i) =>
+        CHANGE_DIR_COMMANDS.has(word.toLowerCase()) && words.slice(i + 1).some(isBareHomeReference),
+    );
+  const homeIndex = subcommands.findIndex(changesToHome);
+  if (homeIndex !== -1 && subcommands.slice(homeIndex).flat().some(startsWithConfigDir)) {
+    return deny(REASONS.homeConfig);
+  }
+  if (
+    subcommands.some((words) => words.some(isBareHomeReference) && words.some(startsWithConfigDir))
+  ) {
+    return deny(REASONS.homeConfig);
+  }
 
   const isRecursive =
-    tokens.some((token) => RECURSIVE_FLAG.test(token)) ||
+    subcommands.some((words) => hasRecursiveFlag(words, powershell)) ||
     subcommands.some((words) => RECURSIVE_COMMANDS.has((words[0] ?? '').toLowerCase()));
   if (isRecursive) {
     const reachesHome = tokens.some((token) => {
@@ -372,7 +456,9 @@ export function decide(input: unknown, ctx: GuardContext): Decision {
 
   if (SHELL_TOOLS.has(call.toolName)) {
     const command = stringField(call.toolInput, 'command');
-    return command === undefined ? ALLOW : decideCommand(command, base, ctx);
+    return command === undefined
+      ? ALLOW
+      : decideCommand(command, base, ctx, call.toolName === 'PowerShell');
   }
   if (call.toolName === 'Grep' || call.toolName === 'Glob') {
     return decideSearch(call, base, ctx);

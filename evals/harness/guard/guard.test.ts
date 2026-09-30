@@ -312,6 +312,61 @@ const CASES: readonly Case[] = [
     file('Read', '/home/alice/.codex/projects/s/memory/m'),
     'homeConfig',
   ],
+  // --- False positives found in Phase 2 (ADR 0031) --------------------------------------------
+  [
+    'ps -Pattern is not a recursive flag',
+    WIN,
+    ps("Select-String -Path docs/x.md -Pattern '\\.(md|ts)$'"),
+    'allow',
+  ],
+  ['ps -First is not a recursive flag', WIN, ps("git log | Select-Object -First 3; '\\'"), 'allow'],
+  ['ps -Recurse on home still blocked', WIN, ps('Get-ChildItem -Recurse ~'), 'homeRecursive'],
+  ['ps -r (abbreviated) on home blocked', WIN, ps('Get-ChildItem -r C:\\Users'), 'homeRecursive'],
+  [
+    'a ~ in a string does not make a project .claude path the home one',
+    WIN,
+    ps("$f = '.claude/hooks/x.ts'; $t = [IO.File]::ReadAllText($f); $t.Replace('a ~ b', 'c')"),
+    'allow',
+  ],
+  [
+    'a ~ in heredoc text does not either',
+    LINUX,
+    bash("cat > /tmp/x.mjs <<'EOF'\nconst a = '~';\nEOF\ncat .claude/hooks/guard.ts"),
+    'allow',
+  ],
+  [
+    'cd ~ then a relative .claude still blocked',
+    LINUX,
+    bash('cd ~ && cat .claude/x'),
+    'homeConfig',
+  ],
+  [
+    'Set-Location ~ then .codex blocked',
+    WIN,
+    ps('Set-Location ~; Get-Content .codex\\auth.json'),
+    'homeConfig',
+  ],
+  ['Join-Path $HOME .codex blocked', WIN, ps('Get-Content (Join-Path $HOME .codex)'), 'homeConfig'],
+  // cd to home inside another command, and native tools under PowerShell (review of the above).
+  ['bash -c cd ~ then .claude', LINUX, bash('bash -c "cd ~ && cat .claude/x"'), 'homeConfig'],
+  ['sh -c cd ~ then .codex', LINUX, bash("sh -c 'cd ~; cat .codex/auth.json'"), 'homeConfig'],
+  ['pwsh -c sl ~ then .claude', WIN, ps('pwsh -c "sl ~; gc .claude\\x"'), 'homeConfig'],
+  ['{ cd ~; … } group', LINUX, bash('{ cd ~; cat .claude/x; }'), 'homeConfig'],
+  ['if { cd ~ } then .claude', WIN, ps('if ($true) { cd ~ }; gc .claude\\x'), 'homeConfig'],
+  ['builtin cd ~', LINUX, bash('builtin cd ~ && cat .claude/x'), 'homeConfig'],
+  ['ps: native grep -rl on home', WIN, ps('grep -rl token ~'), 'homeRecursive'],
+  [
+    'ps: native grep -rn on $env:USERPROFILE',
+    WIN,
+    ps('grep -rn token $env:USERPROFILE'),
+    'homeRecursive',
+  ],
+  ['ps: cp -Rf home', WIN, ps('cp -Rf ~ Q:/tmp/x'), 'homeRecursive'],
+  ['ps: gci -s (Recurse alias) on home', WIN, ps('gci ~ -s'), 'homeRecursive'],
+  ['ps: gci -Recurse:$true on home', WIN, ps('gci ~ -Recurse:$true'), 'homeRecursive'],
+  ['ps: gci -Depth on home', WIN, ps('gci ~ -Depth 9'), 'homeRecursive'],
+  ['ps: sls -Pattern alias is not recursive', WIN, ps("sls -Path x.md -Pattern '\\.md$'"), 'allow'],
+  ['ps: gc -Raw is not recursive', WIN, ps("(gc x.mjs -Raw).Replace('a', '\\')"), 'allow'],
 ];
 
 describe('guard decide()', () => {
