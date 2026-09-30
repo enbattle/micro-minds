@@ -17,10 +17,36 @@ import { ALNUM, BASE32, chars, HEX, LOWER_ALNUM, prng } from './scrub.test-helpe
 // -------------------------------------------------------------------------------------------
 
 /**
- * Generous: today's linear passes over 1 MB take 20–60 ms on a dev laptop, while a pass that
- * rescans the rest of the input from every prefix takes seconds to minutes.
+ * A hang guard, not the linearity check: generous enough for a loaded machine (today's linear
+ * passes over 1 MB take 20–60 ms on an idle laptop and a few seconds under heavy load), while a
+ * pass that rescans the input from every prefix blows through it within a few doublings.
  */
-const TIME_BOUND_MS = 1_000;
+const TIME_BOUND_MS = 5_000;
+/**
+ * The linearity check: growing the input four times (256 KB to 1 MB) makes a linear pass about
+ * 4× slower and a quadratic one about 16×, so 8× leaves a factor of two either way for noise.
+ * Each side is the best of three runs taken back to back, so machine load slows both sides alike
+ * instead of failing the test.
+ */
+const MAX_QUADRUPLING_RATIO = 8;
+
+/** Asserts the pass stays linear from 256 KB to 1 MB (see MAX_QUADRUPLING_RATIO). */
+function expectLinearGrowth(run: (size: number) => void): void {
+  const best = (size: number): number =>
+    Math.min(
+      elapsed(() => run(size)),
+      elapsed(() => run(size)),
+      elapsed(() => run(size)),
+    );
+  const quarter = best(262_144);
+  const full = best(1_048_576);
+  // Below a few ms, timer noise dominates; such a pass is fast enough whatever its shape.
+  if (full < 20) return;
+  expect(
+    full / Math.max(quarter, 1),
+    `256 KB took ${quarter.toFixed(1)} ms, 1 MB ${full.toFixed(1)} ms`,
+  ).toBeLessThan(MAX_QUADRUPLING_RATIO);
+}
 const SIZES = [16_384, 32_768, 65_536, 131_072, 262_144, 524_288, 1_048_576] as const;
 const PEM_BEGIN = `${'-'.repeat(5)}BEGIN PRIVATE KEY${'-'.repeat(5)}`;
 const PEM_BEGIN_RSA = `${'-'.repeat(5)}BEGIN RSA PRIVATE KEY${'-'.repeat(5)}`;
@@ -151,6 +177,7 @@ describe('scrubbing stays linear on adversarial input (about 1 MB)', () => {
         const ms = elapsed(() => scrubText(input));
         expect(ms, `${input.length} chars took ${Math.round(ms)} ms`).toBeLessThan(TIME_BOUND_MS);
       }
+      expectLinearGrowth((size) => scrubText(flood(unit, size)));
     },
     120_000,
   );
@@ -170,6 +197,12 @@ describe('scrubbing stays linear on adversarial input (about 1 MB)', () => {
         expect(ms, `${size} chars took ${Math.round(ms)} ms`).toBeLessThan(TIME_BOUND_MS);
         expect(JSON.stringify(out).length).toBeLessThanOrEqual(10_000);
       }
+      expectLinearGrowth((size) =>
+        scrubRaw(
+          { hook_event_name: 'PostToolUse', tool_response: { stdout: flood(unit, size) } },
+          { maxLength: 10_000 },
+        ),
+      );
     },
     120_000,
   );
@@ -186,6 +219,7 @@ describe('scrubbing stays linear on adversarial input (about 1 MB)', () => {
         expect(ms, `${size} chars took ${Math.round(ms)} ms`).toBeLessThan(TIME_BOUND_MS);
         expect(JSON.stringify(out).length).toBeLessThanOrEqual(10_000);
       }
+      expectLinearGrowth((size) => scrubRaw(make(size), { maxLength: 10_000 }));
     },
     120_000,
   );

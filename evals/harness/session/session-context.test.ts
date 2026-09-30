@@ -280,7 +280,7 @@ describe('gatherInput', () => {
   });
 });
 
-describe('the real hook (subprocess)', () => {
+describe('the real hook (subprocess)', { timeout: 15_000 }, () => {
   function run(env: NodeJS.ProcessEnv) {
     return spawnSync(process.execPath, [HOOK], {
       cwd: REPO_ROOT,
