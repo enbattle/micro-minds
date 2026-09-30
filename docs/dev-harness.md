@@ -119,9 +119,11 @@ three roles are kept apart, each in a fresh context that never sees another's re
   ADRs), so it doesn't re-report them as new. One round per task; a second only if a fix changed
   behavior beyond its finding; after that, you decide.
 - **Triage** (ADR 0031). Every finding gets an outcome with evidence before anything is fixed:
-  fix (introduced, in scope, reproduced), backlog (already present, or a later task's), reject
-  (contradicts a cited decision) or you decide (a blocker the implementer would reject or defer).
-  The table goes into the PR, so you can overrule any of it.
+  fix (introduced, in scope, reproduced), backlog (already present, a later task's, or
+  theoretical), reject (contradicts a cited decision) or you decide (a blocker the implementer
+  would reject or defer). The table goes into the PR, so you can overrule any of it. A finding
+  names its realistic trigger; one with none is theoretical and rated minor, except in a severe
+  class (secrets, hard rules, PLAN §9 security, data loss), which rarity never downgrades.
 - **Read-only, verified.** The reviewer has a shell but must not change anything; `/finish-task`
   compares `HEAD`, `git status`, the staged diff, branches and tags, and the local git config before
   and after its run.

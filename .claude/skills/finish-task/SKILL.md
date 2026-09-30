@@ -78,7 +78,7 @@ You implemented this change, so you don't review it, and you don't brief the rev
 4. **Check the reviewer changed nothing:** repeat step 4.1. Any difference: **stop** and report it. Don't use that review.
 5. **Triage every finding** before fixing anything. Check it against the code and the repository, and give each one outcome with its evidence:
    - **Fix**: reproduced (or plainly true from the code), introduced by this change (`introduced: true`), and in this task's scope.
-   - **Backlog**: `introduced: false`, or it belongs to a later task. Add it to `docs/backlog.md` with its source (`<id> review`) and stage that.
+   - **Backlog**: `introduced: false`, it belongs to a later task, or it is **theoretical** (no realistic trigger, see the reviewer's "Severity"; a severe class never counts as theoretical). Add it to `docs/backlog.md` with its source (`<id> review`) and stage that.
    - **Reject**: it contradicts an accepted risk, an ADR or a PLAN decision. Cite the document and section.
    - **Needs the user**: you would reject or defer a **blocker**, or you disagree about scope. **Stop** and show the evidence. A confirmed false positive is an eval trigger (step 3).
    Minors follow the same outcomes; a fix is optional, a one-line reason is not.
