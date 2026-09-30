@@ -101,8 +101,8 @@ E elevation of privilege.
 | S | Session A's hook token is accepted on session B's `/otel` route | The route names the session (`/otel/<sessionId>/v1/metrics`); the token is compared against that session's token only | ADR 0030; HR4 | planned: task 2.14 |
 | I | Managed settings set only a metrics endpoint, so the process-env OTLP header sends the session's hook token to that collector | The token only posts to that session's loopback ingest (D13) and dies with the session | ADR 0030 | accepted |
 | T | Forged usage inflates cost or totals | Per-session only; usage never affects health; cost labelled `≈` | ADR 0025 | accepted |
-| D | Event floods, huge bodies, unbounded metric series | Body limit, zod on used fields only, per-session rate limit, unknown metrics ignored | PLAN §5.7, §9.6 | planned: tasks 2.7, 2.14 |
-| E | Crafted payload crashes ingest or reducer | Unknown → `kind: 'unknown'`, never throw; zod at boundary | HR7; the adapters: `apps/server/src/providers/claude/adapter.test.ts`, `fake/adapter.test.ts` and the conformance suite (`fc.anything()` inputs), the registry: `registry.test.ts`, the reducer: `packages/shared` property tests | adapters, registry and reducer enforced by test (2.1, 2.3, 2.4); the ingest route: planned: task 2.7 |
+| D | Event floods, huge bodies, unbounded metric series | Body limit, zod on used fields only, per-session rate limit, unknown metrics ignored | PLAN §5.7, §9.6; `apps/server/src/ingest/hook-ingest.test.ts` (C2, C4) | `/hooks` body limit and rate limit: enforced by test (2.7); `/otel`: planned: task 2.14 |
+| E | Crafted payload crashes ingest or reducer | Unknown → `kind: 'unknown'`, never throw; zod at boundary | HR7; the adapters: `apps/server/src/providers/claude/adapter.test.ts`, `fake/adapter.test.ts` and the conformance suite (`fc.anything()` inputs), the registry: `registry.test.ts`, the reducer: `packages/shared` property tests | adapters, registry and reducer enforced by test (2.1, 2.3, 2.4); the ingest route enforced by test (2.7: `apps/server/src/ingest/hook-ingest.test.ts` C3, invalid bodies and a throwing normalize, store or subscriber) |
 
 ### PTY I/O and session manager
 
@@ -152,9 +152,9 @@ end up printed verbatim.
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
-| I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7; the scrubber and cap: `packages/shared/src/scrub.test.ts` | scrubber enforced by test (2.2); storage: planned: task 2.7 |
+| I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7; the scrubber and cap: `packages/shared/src/scrub.test.ts` | scrubber enforced by test (2.2); retention pruning enforced by test (2.7, `apps/server/src/store/event-store.test.ts` C7); the documented wipe: planned with the README |
 | I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (the header reads the token only through `allowedEnvVars`); no token in any launch file, launch files deleted on exit: enforced by test (`apps/server/src/sessions/session-manager.test.ts` C3, C9); deletion of stale files at startup: planned: task 2.11 |
-| I | Tokens or `raw` in logs; log injection via agent text | Never log tokens or `raw`; pino JSON escapes control characters | HR8; `SEC-token-exposure` | planned: task 2.7 |
+| I | Tokens or `raw` in logs; log injection via agent text | Never log tokens (censored by key at any depth, every level); payloads and `raw` only at `debug`, which is off by default and is the intended exception for local debugging; pino JSON escapes control characters | HR8; `SEC-token-exposure`; `apps/server/src/logging/logger.test.ts`, `apps/server/src/ingest/hook-ingest.test.ts` (C5) | enforced by test |
 | T | Corrupt DB bricks startup | Move aside and start fresh | PLAN §5.6 | planned: task 2.11 |
 
 ### Hook relay (only for CLIs without native HTTP hooks)

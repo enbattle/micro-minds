@@ -40,7 +40,7 @@ in PRs, with no automated check).
 | Practice | Enforced by | Status |
 |---|---|---|
 | Versioned event schema and WS protocol | `packages/shared/src/schema.test.ts` (2.1); the WS server's version check (2.8) | Scheduled: 2.8 |
-| Versioned, forward-only DB migrations, each tested | Migration tests | Scheduled: 2.7 |
+| Versioned, forward-only DB migrations, each tested | `apps/server/src/store/migrations.ts` (`PRAGMA user_version`, one transaction per migration, newer databases refused); `migrations.test.ts` runs each later migration against a database made by the previous schema plus `fixtures/db/v<N-1>-*` | Enforced |
 | Structured logging with redaction, `sessionId` on every line | `apps/server/src/logging/logger.ts` (`createLogger()`: token redaction paths, payloads only at debug; session code logs through `child({ sessionId })`), tested in `logger.test.ts` and `sessions/session-manager.test.ts`; reviewer `HR8-*`, `SEC-token-exposure` | Enforced |
 | IDs are ULIDs; timestamps are server-stamped ms epoch | reviewer `CONV-ids-timestamps` | Convention |
 
