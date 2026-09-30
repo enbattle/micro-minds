@@ -323,16 +323,16 @@ const CASES: readonly Case[] = [
   ['ps -Recurse on home still blocked', WIN, ps('Get-ChildItem -Recurse ~'), 'homeRecursive'],
   ['ps -r (abbreviated) on home blocked', WIN, ps('Get-ChildItem -r C:\\Users'), 'homeRecursive'],
   [
-    'a ~ in a string does not make a project .claude path the home one',
+    'accepted false positive: a ~ in a string next to a project .claude path is denied',
     WIN,
     ps("$f = '.claude/hooks/x.ts'; $t = [IO.File]::ReadAllText($f); $t.Replace('a ~ b', 'c')"),
-    'allow',
+    'homeConfig',
   ],
   [
-    'a ~ in heredoc text does not either',
+    'accepted false positive: a ~ in heredoc text next to a project .claude path is denied',
     LINUX,
     bash("cat > /tmp/x.mjs <<'EOF'\nconst a = '~';\nEOF\ncat .claude/hooks/guard.ts"),
-    'allow',
+    'homeConfig',
   ],
   [
     'cd ~ then a relative .claude still blocked',
@@ -367,6 +367,47 @@ const CASES: readonly Case[] = [
   ['ps: gci -Depth on home', WIN, ps('gci ~ -Depth 9'), 'homeRecursive'],
   ['ps: sls -Pattern alias is not recursive', WIN, ps("sls -Path x.md -Pattern '\\.md$'"), 'allow'],
   ['ps: gc -Raw is not recursive', WIN, ps("(gc x.mjs -Raw).Replace('a', '\\')"), 'allow'],
+  // Second review round: home reached through $(…), (…), variables and .NET calls, and native
+  // tools wrapped in PowerShell cmdlets. The guard's origin/main version denied all of these.
+  ['cd $(echo ~) then .claude', LINUX, bash('cd $(echo ~) && cat .claude/x'), 'homeConfig'],
+  [
+    'cd "$(printf %s $HOME)"',
+    LINUX,
+    bash('cd "$(printf %s $HOME)" && cat .claude/x'),
+    'homeConfig',
+  ],
+  ['H=~; cd $H', LINUX, bash('H=~; cd $H; cat .claude/x'), 'homeConfig'],
+  ['export D=~ across lines', LINUX, bash('export D=~\ncd $D\ncat .codex/auth.json'), 'homeConfig'],
+  ['xargs sh -c cd', LINUX, bash("echo ~ | xargs -I% sh -c 'cd %; cat .claude/x'"), 'homeConfig'],
+  ['cd (Resolve-Path ~)', WIN, ps('cd (Resolve-Path ~); gc .claude\\x'), 'homeConfig'],
+  ['cd ($HOME)', WIN, ps('cd ($HOME); gc .codex\\auth.json'), 'homeConfig'],
+  ['$h = $HOME; cd $h', WIN, ps('$h = $HOME; cd $h; gc .codex\\auth.json'), 'homeConfig'],
+  [
+    'SetCurrentDirectory($HOME)',
+    WIN,
+    ps("[IO.Directory]::SetCurrentDirectory($HOME); [IO.File]::ReadAllText('.codex\\auth.json')"),
+    'homeConfig',
+  ],
+  [
+    'Combine(($HOME), .codex)',
+    WIN,
+    ps("gc ([IO.Path]::Combine(($HOME), '.codex', 'auth.json'))"),
+    'homeConfig',
+  ],
+  ['Invoke-Expression grep -rn', WIN, ps('Invoke-Expression "grep -rn token ~"'), 'homeRecursive'],
+  [
+    'ForEach-Object { grep -rn }',
+    WIN,
+    ps('1 | ForEach-Object { grep -rn token ~ }'),
+    'homeRecursive',
+  ],
+  [
+    'Start-Job { grep -rn $env:USERPROFILE }',
+    WIN,
+    ps('Start-Job { grep -rn token $env:USERPROFILE } | Receive-Job -Wait'),
+    'homeRecursive',
+  ],
+  ['git-grep -rn (hyphenated native)', WIN, ps('echo x; git-grep -rn token ~'), 'homeRecursive'],
 ];
 
 describe('guard decide()', () => {
@@ -469,7 +510,7 @@ describe('guard helpers', () => {
   });
 });
 
-describe('guard.ts as a process (the Claude Code hook contract)', () => {
+describe('guard.ts as a process (the Claude Code hook contract)', { timeout: 10_000 }, () => {
   const entry = fileURLToPath(new URL('../../../.claude/hooks/guard.ts', import.meta.url));
   const run = (stdin: string) =>
     spawnSync(process.execPath, [entry], { input: stdin, encoding: 'utf8', timeout: 10_000 });

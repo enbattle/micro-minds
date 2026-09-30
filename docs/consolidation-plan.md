@@ -67,13 +67,14 @@ Approving this plan was also the user's approval for its one-off edits to locked
       gaps by kind (token shapes, where secrets sit, the code exemption, key names, cost).
 - [x] `docs/engineering-standards.md`: rows for the review loop, triage, eval accounting and seeded
       properties.
-- [x] Guard hook: PowerShell parameters containing an "r" (`-Pattern`, `-First`) no longer count as
-      recursive flags (only `-Recurse` and its abbreviations do in PowerShell); a `~` in a string or
-      heredoc no longer makes a project-relative `.claude/...` path count as the home one (only a
-      `cd`/`Set-Location` to home, at any word position, or a home reference in the same simple
-      command, does). Under PowerShell, native tools keep the POSIX flag check (`grep -rl ~`), and
-      `-s`, `-Depth` and `-Recurse:$true` now count as recursion. 23 new table rows; review found
-      two bypasses in the first version, both fixed and pinned.
+- [x] Guard hook: the broad rules stay (a home reference anywhere plus a relative config-dir path;
+      any word that looks like a recursion flag, anywhere). Two review rounds showed that every
+      narrowing of those rules opened bypasses (`$(…)`, variables, .NET calls, wrapped native
+      tools), so the only narrowing left is an explicit list of PowerShell parameters that can't
+      mean recursion (`-Pattern`, `-First`, `-Raw`, …). `-s`, `-Depth` and `-Recurse:$true` now
+      count as recursion. A differential check against the previous guard over 86 commands found no
+      command it denied that this one allows, apart from those parameters. The `~`-in-text false
+      positive is an accepted cost, listed in the backlog's "Harness friction". 37 new table rows.
 - [x] ~~Delete `spikes/phase-1/` now.~~ Kept, after checking it against the repository: its sink
       and `spike:scrub` are the only fixture-recording and scrubbing tools, fixtures are still
       needed (StopFailure, `elicitation_dialog`), and its `.md` files are the evidence ADRs 0029

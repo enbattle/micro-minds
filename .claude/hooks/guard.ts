@@ -83,55 +83,44 @@ const HOME_PREFIX =
 const POSIX_DRIVE_PREFIX = /^\/(?:cygdrive\/|mnt\/)?([a-z])(?=\/|$)/i;
 // PowerShell's env: drive (listing it dumps every variable); `env:PATH` (one variable) is fine.
 const ENV_DRIVE = /^env:[\\/]?\*?$/i;
-// POSIX short-flag clusters with r/R (`-r`, `-rf`, `-aR`) and `--recursive`.
-const RECURSIVE_FLAG = /^(?:-[a-z]*r[a-z]*|--recursive)$/i;
-// PowerShell's recursion parameters: `-Recurse` and its abbreviations, its alias `-s`, `-Depth`,
-// with or without a `:$true` value. Other parameters that happen to contain an r (`-Raw`,
-// `-Pattern`, `-First`) aren't recursive.
-const PS_RECURSIVE_FLAG = /^-(?:r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?|s|depth)(?::.*)?$/i;
-// A PowerShell cmdlet name (`Get-ChildItem`, `Select-String`).
-const CMDLET = /^[a-z]+-[a-z]+$/i;
-// PowerShell aliases of file cmdlets: their flags are checked both ways (`ls -R`, `cp -Rf`).
-const PS_FILE_ALIASES: ReadonlySet<string> = new Set([
-  'ls',
-  'dir',
-  'gci',
-  'cp',
-  'copy',
-  'cpi',
-  'rm',
-  'del',
-  'erase',
-  'ri',
-  'rd',
-  'rmdir',
-  'mv',
-  'move',
-  'mi',
-]);
-// PowerShell aliases of other cmdlets: PowerShell parameters only (`sls -Pattern`, `gc -Raw`).
-const PS_OTHER_ALIASES: ReadonlySet<string> = new Set([
-  'gc',
-  'type',
-  'sls',
-  'select',
-  'where',
-  'foreach',
-  'sort',
-  'measure',
-  'group',
-  'ft',
-  'fl',
-  'echo',
-]);
-// Commands that change directory: `cd ~` followed by a relative `.claude/...` path reaches it.
-const CHANGE_DIR_COMMANDS: ReadonlySet<string> = new Set([
-  'cd',
-  'chdir',
-  'pushd',
-  'set-location',
-  'sl',
-  'push-location',
+// Any word that could be a recursion flag, in any position: POSIX short-flag clusters with r/R
+// (`-r`, `-rf`, `-rn`, `-aR`), `--recursive`, and PowerShell's `-Recurse` family (its
+// abbreviations, its alias `-s`, `-Depth`, with or without a `:$true` value).
+const RECURSIVE_FLAG = /^(?:-[a-z]*r[a-z]*|--recursive|-s|-depth)(?::.*)?$/i;
+// PowerShell parameters and operators that contain an r but never mean recursion. Only these
+// exact words are exempt, and only in PowerShell commands, so a POSIX cluster (`-rn`, `-Rf`) is
+// still caught wherever it appears (ADR 0031: the guard may only narrow by an explicit list).
+const PS_NOT_RECURSIVE: ReadonlySet<string> = new Set([
+  '-pattern',
+  '-first',
+  '-raw',
+  '-filter',
+  '-property',
+  '-expandproperty',
+  '-erroraction',
+  '-errorvariable',
+  '-literalpath',
+  '-directory',
+  '-argumentlist',
+  '-workingdirectory',
+  '-passthru',
+  '-readcount',
+  '-delimiter',
+  '-header',
+  '-stream',
+  '-culture',
+  '-verbose',
+  '-wrap',
+  '-average',
+  '-parallel',
+  '-replace',
+  '-creplace',
+  '-ireplace',
+  '-or',
+  '-xor',
+  '-bor',
+  '-bxor',
+  '-shr',
 ]);
 const DOTNET_ENV_DUMP = /GetEnvironmentVariables\s*\(/i;
 
@@ -348,18 +337,13 @@ function isEnvDump(tokens: readonly string[]): boolean {
 }
 
 /**
- * Whether a simple command passes a recursion flag. In PowerShell a cmdlet (or an alias of one)
- * takes PowerShell parameters; anything else there is a native tool (Git's `grep`, `cp`) with POSIX
- * flags. File-cmdlet aliases get both checks.
+ * Whether a word may be a recursion flag. Every word counts, wherever it sits (inside
+ * `Invoke-Expression "…"`, a script block, `bash -c`), except the few PowerShell parameters in
+ * PS_NOT_RECURSIVE when the command runs in PowerShell.
  */
-function hasRecursiveFlag(words: readonly string[], powershell: boolean): boolean {
-  const posix = words.some((word) => RECURSIVE_FLAG.test(word));
-  if (!powershell) return posix;
-  const ps = words.some((word) => PS_RECURSIVE_FLAG.test(word));
-  const first = (words[0] ?? '').toLowerCase();
-  if (PS_FILE_ALIASES.has(first)) return ps || posix;
-  if (CMDLET.test(first) || PS_OTHER_ALIASES.has(first)) return ps;
-  return posix;
+function isRecursiveFlag(word: string, powershell: boolean): boolean {
+  if (!RECURSIVE_FLAG.test(word)) return false;
+  return !(powershell && PS_NOT_RECURSIVE.has(word.toLowerCase()));
 }
 
 function decideCommand(
@@ -378,32 +362,20 @@ function decideCommand(
     if (decision.decision === 'deny') return decision;
   }
 
-  // `cd ~ && cat .claude/x`, `Join-Path $HOME .codex`: a relative path that starts with a config
-  // dir name, after a change to the home directory or next to a home reference in the same
-  // command. A `~` elsewhere (inside a string or a heredoc's text) doesn't make `.claude/...`
-  // mean the home one.
+  // `cd ~ && cat .claude/x`, `Join-Path $HOME .codex`, `H=~; cd $H; cat .codex/x`: a bare home
+  // reference anywhere plus a relative path that starts with a config dir name. Deliberately
+  // broad: narrowing it (to a `cd` next to the `~`) opened bypasses through `$(…)`, variables and
+  // .NET calls. The cost is a false positive when a `~` is only text (a string or heredoc) next to
+  // a project `.claude/` path; write such text with a file tool instead.
+  const mentionsHome = tokens.some(isBareHomeReference);
   const startsWithConfigDir = (token: string): boolean => {
     const first = token.split(/[\\/]+/)[0];
     return first !== undefined && isProtectedDirName(first);
   };
-  // At any word position: `bash -c "cd ~ && …`, `{ cd ~; …`, `builtin cd ~`, `if (…) { sl ~ }`.
-  const changesToHome = (words: readonly string[]): boolean =>
-    words.some(
-      (word, i) =>
-        CHANGE_DIR_COMMANDS.has(word.toLowerCase()) && words.slice(i + 1).some(isBareHomeReference),
-    );
-  const homeIndex = subcommands.findIndex(changesToHome);
-  if (homeIndex !== -1 && subcommands.slice(homeIndex).flat().some(startsWithConfigDir)) {
-    return deny(REASONS.homeConfig);
-  }
-  if (
-    subcommands.some((words) => words.some(isBareHomeReference) && words.some(startsWithConfigDir))
-  ) {
-    return deny(REASONS.homeConfig);
-  }
+  if (mentionsHome && tokens.some(startsWithConfigDir)) return deny(REASONS.homeConfig);
 
   const isRecursive =
-    subcommands.some((words) => hasRecursiveFlag(words, powershell)) ||
+    tokens.some((token) => isRecursiveFlag(token, powershell)) ||
     subcommands.some((words) => RECURSIVE_COMMANDS.has((words[0] ?? '').toLowerCase()));
   if (isRecursive) {
     const reachesHome = tokens.some((token) => {
