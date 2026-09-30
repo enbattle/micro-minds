@@ -141,10 +141,11 @@ end up printed verbatim.
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
-| T | Path traversal via repo name, slug or `sessionId` | Slug rules; ULID ids; `path.resolve` then prefix-check under `worktrees/` | ADR 0012; `WIN-path-concat` | planned: task 2.5 |
-| T | Symlink or junction tricks make "Remove worktree" delete outside the root | Resolve real paths; require a registered worktree (`git worktree list`); remove via `git worktree remove`, never a recursive delete that follows links | HR11; `SEC-worktree-removal` | planned: task 2.5 |
-| T | Removal destroys uncommitted or unpushed work | Explicit confirmed action with dirty and unpushed warnings | PLAN §5.5; HR11 | planned: tasks 2.5, 3.8 |
-| E | Hostile repo's git config (`core.fsmonitor`, `core.hooksPath`) runs code when we run `git` | Argv only, `--` before paths, `-c core.fsmonitor=false`, empty hooks path | `SEC-worktree-removal` | planned: task 2.5 |
+| T | Path traversal via repo name, slug or `sessionId` | Slug rules; ULID ids; `path.resolve` then prefix-check under `worktrees/` | ADR 0012; `WIN-path-concat`; `apps/server/src/worktrees/worktree-manager.test.ts` (C3–C5, C9) | enforced by test |
+| T | Symlink or junction tricks make "Remove worktree" delete outside the root | Resolve real paths; require a registered worktree (`git worktree list`); remove via `git worktree remove`, never a recursive delete that follows links; unlink untracked links inside the worktree first (restored if git then fails), because Git for Windows' `worktree remove` deletes a junction target's contents | HR11; `SEC-worktree-removal`; `apps/server/src/worktrees/worktree-manager.test.ts` (C9, C10) | enforced by test |
+| T | Removal destroys uncommitted or unpushed work | Explicit confirmed action with dirty and unpushed warnings | PLAN §5.5; HR11; `apps/server/src/worktrees/worktree-manager.test.ts` (C8) | enforced by test (dirty check, task 2.5); planned: task 3.8 (unpushed warnings) |
+| E | Hostile repo's git config (`core.fsmonitor`, `core.hooksPath`) runs code when we run `git` | Argv only, `--` before paths, `-c core.fsmonitor=false`, hooks path set to the null device, inherited `GIT_*` variables dropped | `SEC-worktree-removal`; `apps/server/src/worktrees/worktree-manager.test.ts` (C11, C12) | enforced by test |
+| E | Hostile repo's filter drivers (`filter.<name>.smudge`/`clean` named in `.gitattributes`) run when we check out or `git status` a worktree | None yet: git has no switch that turns off every filter; see docs/backlog.md | `SEC-worktree-removal` | gap |
 | E | Our injected settings widen a hostile repo's power | Per-session file holds only hooks and env; no permission allows, no permission-skip flags; outside the worktree | PLAN §5.2; HR2; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (settings merge with project hooks; the file holds hooks only); planned: task 2.6 |
 
 ### Event store and local data (B3)
