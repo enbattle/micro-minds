@@ -73,7 +73,10 @@ reopen only with new evidence).
 
 ### A per-change pipeline log and retrospective
 
-- **Status:** Deferred (decided 2026-09-27)
+- **Status:** Trigger fired (2026-09-29): guard friction recurred in Phase 1 and Phase 2. Adopted
+  in its light form: the "Harness friction" list in [backlog.md](backlog.md), reviewed for ten
+  minutes at each phase gate. A per-change log stays deferred.
+- **Originally:** Deferred (decided 2026-09-27)
 - **What:** `til` and `cortex-workspace` append a row per change (gates, findings, escaped
   defects) and run a short retrospective that turns friction into approved process diffs.
 - **Why not now:** each PR body already records the gates, the reviewer's rounds, findings and
@@ -95,7 +98,12 @@ reopen only with new evidence).
 
 ### Claude Code sandbox mode for this repo
 
-- **Status:** Deferred
+- **Status:** Trigger fired (Phase 1 is done). Next: a short spike and an ADR. Evidence for it:
+  the guard's command parsing produced false positives in two phases and, in ADR 0031's review,
+  bypasses whenever a rule was narrowed; OS-level isolation (Claude Code's sandbox where it runs,
+  or a separate user, WSL or a devcontainer on Windows) doesn't depend on parsing. Check first
+  what the sandbox supports on native Windows.
+- **Originally:** Deferred
 - **Why not now:** we don't yet know what filesystem and network access agents need here (PTYs,
   `git worktree`, local servers). Sandboxing too early would break Phase 1 spike work.
 - **Revisit when:** Phase 1 is done. Run a short spike and write an ADR.

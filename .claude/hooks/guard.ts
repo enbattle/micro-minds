@@ -83,7 +83,45 @@ const HOME_PREFIX =
 const POSIX_DRIVE_PREFIX = /^\/(?:cygdrive\/|mnt\/)?([a-z])(?=\/|$)/i;
 // PowerShell's env: drive (listing it dumps every variable); `env:PATH` (one variable) is fine.
 const ENV_DRIVE = /^env:[\\/]?\*?$/i;
-const RECURSIVE_FLAG = /^(?:-[a-z]*r[a-z]*|--recursive)$/i;
+// Any word that could be a recursion flag, in any position: POSIX short-flag clusters with r/R
+// (`-r`, `-rf`, `-rn`, `-aR`), `--recursive`, and PowerShell's `-Recurse` family (its
+// abbreviations, its alias `-s`, `-Depth`, with or without a `:$true` value).
+const RECURSIVE_FLAG = /^(?:-[a-z]*r[a-z]*|--recursive|-s|-depth)(?::.*)?$/i;
+// PowerShell parameters and operators that contain an r but never mean recursion. Only these
+// exact words are exempt, and only in PowerShell commands, so a POSIX cluster (`-rn`, `-Rf`) is
+// still caught wherever it appears (ADR 0031: the guard may only narrow by an explicit list).
+const PS_NOT_RECURSIVE: ReadonlySet<string> = new Set([
+  '-pattern',
+  '-first',
+  '-raw',
+  '-filter',
+  '-property',
+  '-expandproperty',
+  '-erroraction',
+  '-errorvariable',
+  '-literalpath',
+  '-directory',
+  '-argumentlist',
+  '-workingdirectory',
+  '-passthru',
+  '-readcount',
+  '-delimiter',
+  '-header',
+  '-stream',
+  '-culture',
+  '-verbose',
+  '-wrap',
+  '-average',
+  '-parallel',
+  '-replace',
+  '-creplace',
+  '-ireplace',
+  '-or',
+  '-xor',
+  '-bor',
+  '-bxor',
+  '-shr',
+]);
 const DOTNET_ENV_DUMP = /GetEnvironmentVariables\s*\(/i;
 
 const ALLOW: Decision = { decision: 'allow' };
@@ -298,7 +336,22 @@ function isEnvDump(tokens: readonly string[]): boolean {
   return tokens.some((token) => ENV_DRIVE.test(token));
 }
 
-function decideCommand(command: string, base: string, ctx: GuardContext): Decision {
+/**
+ * Whether a word may be a recursion flag. Every word counts, wherever it sits (inside
+ * `Invoke-Expression "…"`, a script block, `bash -c`), except the few PowerShell parameters in
+ * PS_NOT_RECURSIVE when the command runs in PowerShell.
+ */
+function isRecursiveFlag(word: string, powershell: boolean): boolean {
+  if (!RECURSIVE_FLAG.test(word)) return false;
+  return !(powershell && PS_NOT_RECURSIVE.has(word.toLowerCase()));
+}
+
+function decideCommand(
+  command: string,
+  base: string,
+  ctx: GuardContext,
+  powershell: boolean,
+): Decision {
   if (DOTNET_ENV_DUMP.test(command)) return deny(REASONS.envDump);
 
   const subcommands = splitSubcommands(command).map(tokenize);
@@ -309,8 +362,11 @@ function decideCommand(command: string, base: string, ctx: GuardContext): Decisi
     if (decision.decision === 'deny') return decision;
   }
 
-  // `cd ~ && cat .claude/x`, `Join-Path $HOME .codex`: a bare home reference plus a relative
-  // path that starts with a config dir name.
+  // `cd ~ && cat .claude/x`, `Join-Path $HOME .codex`, `H=~; cd $H; cat .codex/x`: a bare home
+  // reference anywhere plus a relative path that starts with a config dir name. Deliberately
+  // broad: narrowing it (to a `cd` next to the `~`) opened bypasses through `$(…)`, variables and
+  // .NET calls. The cost is a false positive when a `~` is only text (a string or heredoc) next to
+  // a project `.claude/` path; write such text with a file tool instead.
   const mentionsHome = tokens.some(isBareHomeReference);
   const startsWithConfigDir = (token: string): boolean => {
     const first = token.split(/[\\/]+/)[0];
@@ -319,7 +375,7 @@ function decideCommand(command: string, base: string, ctx: GuardContext): Decisi
   if (mentionsHome && tokens.some(startsWithConfigDir)) return deny(REASONS.homeConfig);
 
   const isRecursive =
-    tokens.some((token) => RECURSIVE_FLAG.test(token)) ||
+    tokens.some((token) => isRecursiveFlag(token, powershell)) ||
     subcommands.some((words) => RECURSIVE_COMMANDS.has((words[0] ?? '').toLowerCase()));
   if (isRecursive) {
     const reachesHome = tokens.some((token) => {
@@ -372,7 +428,9 @@ export function decide(input: unknown, ctx: GuardContext): Decision {
 
   if (SHELL_TOOLS.has(call.toolName)) {
     const command = stringField(call.toolInput, 'command');
-    return command === undefined ? ALLOW : decideCommand(command, base, ctx);
+    return command === undefined
+      ? ALLOW
+      : decideCommand(command, base, ctx, call.toolName === 'PowerShell');
   }
   if (call.toolName === 'Grep' || call.toolName === 'Glob') {
     return decideSearch(call, base, ctx);

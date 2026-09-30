@@ -32,9 +32,10 @@ decisions D1–D30 in [PLAN §2](../PLAN.md#2-key-decisions-with-rationale).
 | [0025](0025-usage-cost-from-cli-telemetry.md) | Usage and cost come from the CLI's own telemetry | Accepted (channel settled by 0030) |
 | [0026](0026-ui-session-bootstrap.md) | UI sessions start from a one-time code and live in an HttpOnly cookie | Accepted |
 | [0027](0027-claude-pushes-branches-humans-merge.md) | Claude pushes task and phase branches; merges stay human | Accepted |
-| [0028](0028-independent-tests-and-adversarial-review.md) | Tests by a separate writer, locked; adversarial, independent review | Accepted |
+| [0028](0028-independent-tests-and-adversarial-review.md) | Tests by a separate writer, locked; adversarial, independent review | Accepted (amended by 0031) |
 | [0029](0029-claude-hooks-over-native-http.md) | Claude's hook events arrive over native HTTP hooks, not the relay | Accepted |
 | [0030](0030-claude-usage-over-otel-metrics.md) | Claude's usage arrives as OpenTelemetry metrics, configured through the per-session settings | Accepted |
+| [0031](0031-proportionate-review-and-evals.md) | Proportionate review: triage findings, one round, evals from real misses (amends 0028) | Accepted |
 
 ## When to write an ADR
 

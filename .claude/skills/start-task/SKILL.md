@@ -1,6 +1,6 @@
 ---
 name: start-task
-description: Start a micro-minds PLAN task - validate the task id against docs/PLAN.md, check the git state and propose a task branch, brief everything due with the task (full task text, the phase's "Done when", referenced PLAN sections and ADRs, package CLAUDE.md files, reviewer eval cases due from evals/harness/reviewer/uncovered.json, scheduled engineering-standards and threat-model rows), then write a plan and stop for approval before any code. Use when asked to start, begin, pick up or plan a PLAN task ("start 2.7", "let's do the next task"). Takes the task id and an optional --branch flag.
+description: Start a micro-minds PLAN task - validate the task id against docs/PLAN.md, check the git state and propose a task branch, brief everything due with the task (full task text, the phase's "Done when", referenced PLAN sections and ADRs, package CLAUDE.md files, scheduled engineering-standards and threat-model rows, related backlog items), then write a plan and stop for approval before any code. Use when asked to start, begin, pick up or plan a PLAN task ("start 2.7", "let's do the next task"). Takes the task id and an optional --branch flag.
 argument-hint: <task-id> [--branch | --branch=<name>]
 arguments: [id]
 allowed-tools: Read Grep Glob Bash(git switch -c *) PowerShell(git switch -c *)
@@ -49,7 +49,7 @@ Read each source; quote the task and criteria verbatim, and summarize everything
 2. **Phase:** the phase heading, its **Goal**, and its **Done when** line, verbatim.
 3. **References:** every `§N.M` section, `D<n>` decision (→ `docs/decisions/00<nn>-*.md`), ADR number, file path and reviewer rule ID named in the task text. Read each; one line on what it requires of this task.
 4. **Package rules:** read the `CLAUDE.md` of every package the task will touch (`packages/shared`, `packages/hook-relay`, `apps/server`, `apps/web`). For harness work (`.claude/`, `evals/`) read `docs/dev-harness.md` and `evals/harness/README.md` instead. List which ones apply.
-5. **Reviewer eval cases due:** every entry in `evals/harness/reviewer/uncovered.json` whose `due` is exactly `$id`. For each: rule ID, its `why`, and its row from the catalog in `.claude/agents/reviewer.md`. These need a planted case in this task's PR, and the entry is removed from `uncovered.json` in the same PR (see "Adding a case" in `evals/harness/README.md`). Once the checkbox is ticked, `coverage.test.ts` fails CI for any that are left. Also flag any entry whose `due` task is already ticked (**overdue**; CI should already be red).
+5. **Backlog:** items in `docs/backlog.md` that name `$id` or the code it touches (earlier reviews deferred them here, ADR 0031). Say which the plan takes on.
 6. **Scheduled standards:** rows of `docs/engineering-standards.md` whose Status is `Scheduled:` with `$id` in its list. The task isn't done until each check exists; `/finish-task` flips the status.
 7. **Threat model:** rows of `docs/security/threat-model.md` with status `planned: task $id`.
 
@@ -60,9 +60,9 @@ Write the plan in this order. If the PLAN text is wrong or ambiguous, say so and
 1. **Scope:** one sentence. **Out of scope:** later tasks this could drift into (by id).
 2. **Files:** each path to create or change, with one line on why. Nothing outside the task.
 3. **Tests:** whether the task touches code or tests and so needs the independent test writer (step 6; the definition is in `docs/dev-harness.md`, "Which tasks get locked tests"), the fixtures that exist for it, and any test infrastructure it needs first (a test dependency the task names, fixtures it delivers). **Don't design the tests here**: the test writer derives them from the task text and the acceptance clauses in item 6, never from this plan (ADR 0028).
-4. **Eval cases:** for each rule from 3.5, a case directory name, the planted violation, and its `mustNotFind` neighbors.
+4. **Backlog items taken on:** from 3.5, if any.
 5. **Docs:** standards rows, threat-model rows, protocol docs, ADR (only if a PLAN §2 decision changes).
-6. **Acceptance checklist:** split the task text into atomic clauses, each testable or marked manual-verify. They are the test writer's and the reviewer's only statement of the task besides its text, so write them from the task, not from your plan. One checkbox per clause. Then add `npm run check`, `npm run test:coverage` (if `apps/`, `packages/`, `.claude/hooks/` or `evals/` change), the eval cases, and `/finish-task`.
+6. **Acceptance checklist:** split the task text into atomic clauses, each testable or marked manual-verify. They are the test writer's and the reviewer's only statement of the task besides its text, so write them from the task, not from your plan. One checkbox per clause. Then add `npm run check`, `npm run test:coverage` (if `apps/`, `packages/`, `.claude/hooks/` or `evals/` change), and `/finish-task`.
 7. **Commit:** the proposed Conventional Commit subject, for example `feat(server): add hook ingest and event store (2.7)`.
 8. **Risks and questions:** anything you need the user to decide.
 
@@ -78,9 +78,11 @@ For a task that touches code or tests (ADR 0028; the definition is in `docs/dev-
 1. Invoke the `test-writer` subagent (never a fork: it must not inherit this conversation). Its prompt is exactly: the task id, the task line from PLAN verbatim, the acceptance clauses from step 4.6, and the phase's rules if it has a "Before you start" block. Nothing else: no plan, no file list, no hints about the implementation.
 2. When it returns, check `git status --short`: only test paths (`*.test.ts`, `*.test.tsx`, `*.test-helpers.ts(x)`, `__snapshots__/`, `fixtures/`, `e2e/`) may be new or changed. Anything else: **stop** and report it; don't commit it.
 3. Run the new tests (`npx vitest run <files>`) and confirm they fail as the test writer reported, apart from the ones it says guard existing behavior.
+   **Check its interpretations** (ADR 0031): its report lists what it assumed where the clauses were silent. Check each against the repository (PLAN, ADRs, protocol docs, existing code). One that contradicts them: raise it with the user in one line before locking (in `/run-phase`, stop for it). Assumptions that are merely one reasonable choice need no action.
 4. Commit its files **unchanged**, alone: subject `test(<scope>): failing tests for <what> (<id>)`, body with the clause-to-test table from its report and the sha of the step 6.0 commit if there was one, then the trailers `Test-lock: <id>` and the co-author line. Use `git add -- <paths>` and `git commit -F <file outside the tree>`.
 5. `npm run tests:locked -- <id>` must pass. From here on, never edit, add or delete a test path for this task.
 6. **A disputed test.** If, while implementing, you believe a locked test is wrong, don't touch it. A revision is only for the open unit (never after another task's lock), and only from a clean lock: `npm run tests:locked -- <id>` must pass first, so no edit of yours can ride along in the revision. The script also compares the state just before the revision with the original lock (`LOCK ... before revision`, `late-revision`). Invoke a fresh `test-writer` in revision mode with the task text, the clauses, the test and your objection in one paragraph. Commit whatever it changes as a second lock commit, with an extra `Revision-reason: <one line>` trailer. The lock script refuses a third lock commit: a second dispute **stops** the task for the user.
+7. **Follow-up tests** for code already finished (a backlog item, a bug found later) go into the existing test file for that code, under a new `Test-lock` for the follow-up's id. Don't start a new `*.fix.test.ts` file per follow-up.
 
 ```
 ## Task $id: <title>

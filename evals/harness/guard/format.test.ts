@@ -74,7 +74,9 @@ describe('biomeCandidates', () => {
   });
 });
 
-describe('format.ts as a process', () => {
+// Each test spawns Node (and Biome); allow as long as spawnSync does, so a loaded machine slows
+// them down instead of failing them.
+describe('format.ts as a process', { timeout: 30_000 }, () => {
   const entry = fileURLToPath(new URL('../../../.claude/hooks/format.ts', import.meta.url));
   const projectDir = fileURLToPath(new URL('../../../', import.meta.url));
   let tempDir: string | undefined;

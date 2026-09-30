@@ -217,6 +217,20 @@ describe('resolveBinary on win32', () => {
       files: ['bin\\mmtool.exe', 'mmtool.exe', '..\\tools\\mmtool.exe', 'C:\\b\\mmtool.cmd'],
       expected: { path: 'C:\\b\\mmtool.cmd', kind: 'cmd' },
     },
+    {
+      name: 'a PATH entry wrapped in double quotes is searched',
+      pathValue: 'C:\\a;"C:\\Program Files\\nodejs";C:\\b',
+      pathExt: DEFAULT_PATHEXT,
+      files: ['C:\\Program Files\\nodejs\\mmtool.cmd', 'C:\\b\\mmtool.exe'],
+      expected: { path: 'C:\\Program Files\\nodejs\\mmtool.cmd', kind: 'cmd' },
+    },
+    {
+      name: 'script extensions in PATHEXT (.JS, .VBS) are skipped for a later .EXE',
+      pathValue: 'C:\\a',
+      pathExt: '.JS;.VBS;.EXE',
+      files: ['C:\\a\\mmtool.js', 'C:\\a\\mmtool.vbs', 'C:\\a\\mmtool.exe'],
+      expected: { path: 'C:\\a\\mmtool.exe', kind: 'exe' },
+    },
   ])('$name', ({ pathValue, pathExt, files, expected }) => {
     const fs = fakeFs('win32', files);
     const result = registry.resolveBinary('fake', {
@@ -307,6 +321,12 @@ describe('resolveBinary on win32', () => {
       pathValue: 'C:\\a',
       pathExt: undefined,
       files: ['C:\\a\\mmtool.ps1'],
+    },
+    {
+      name: 'PATHEXT lists only script extensions (.JS;.VBS;.PS1) and only those files exist',
+      pathValue: 'C:\\a',
+      pathExt: '.JS;.VBS;.PS1',
+      files: ['C:\\a\\mmtool.js', 'C:\\a\\mmtool.vbs', 'C:\\a\\mmtool.ps1'],
     },
     {
       name: 'the command exists only in a relative PATH entry',
@@ -705,6 +725,53 @@ describe('normalize: a misbehaving adapter yields unknown events', () => {
     expect(out[2]?.kind).toBe('turn.finished');
     expect(new Set(out.map((e) => e.id)).size).toBe(3);
     expectAllStorable(out);
+  });
+
+  it('a clock.tick from an adapter is replaced by an unknown event (time comes only from the server, D15)', () => {
+    const tick = validEvent({ kind: 'clock.tick' });
+    expect(parseAgentEvent(tick).ok).toBe(true);
+    const registry = createProviderRegistry([
+      stubNormalize((_raw, ctx) => [
+        validEvent({ id: ctx.newId(), kind: 'prompt.submitted' }),
+        { ...tick, id: ctx.newId() },
+        validEvent({ id: ctx.newId(), kind: 'turn.finished' }),
+      ]),
+    ]);
+    const { ctx, issued } = makeNormalizeContext();
+    const out = registry.normalize('fake', secretRaw, ctx);
+    expect(out.map((e) => e.kind)).toEqual(['prompt.submitted', 'unknown', 'turn.finished']);
+    expectFallback(out[1], issued);
+    expectAllStorable(out);
+  });
+
+  it.each([
+    {
+      name: 'a revoked Proxy',
+      make: (): AgentEvent[] => {
+        const { proxy, revoke } = Proxy.revocable<AgentEvent[]>([], {});
+        revoke();
+        return proxy;
+      },
+    },
+    {
+      name: 'an array Proxy whose length getter throws',
+      make: (): AgentEvent[] =>
+        new Proxy<AgentEvent[]>([validEvent()], {
+          get: (target, key, receiver) => {
+            if (key === 'length') throw new Error('length');
+            return Reflect.get(target, key, receiver);
+          },
+        }),
+    },
+  ])('an adapter returning $name → exactly one unknown event, no throw', ({ make }) => {
+    const registry = createProviderRegistry([stubNormalize(() => make())]);
+    const { ctx, issued } = makeNormalizeContext();
+    let out: AgentEvent[] = [];
+    expect(() => {
+      out = registry.normalize('fake', secretRaw, ctx);
+    }).not.toThrow();
+    expect(out).toHaveLength(1);
+    expectFallback(out[0], issued);
   });
 
   it('an unknown provider id returns [] and never calls an adapter', () => {

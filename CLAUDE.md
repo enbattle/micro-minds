@@ -26,6 +26,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - `docs/dev-harness.md`: how the Claude Code harness (settings, hooks, agents, skills, evals) works and how to change it.
 - `docs/engineering-standards.md`: every engineering practice and the check that enforces it. Add a row when you introduce one.
 - `docs/deferred-practices.md`: practices we chose not to adopt yet, with the trigger that brings each back. Search it before proposing a new tool, hook or process.
+- `docs/backlog.md`: review findings deferred to a later task, and where each belongs.
 - `docs/decisions/`: ADRs. Add one for any decision that changes PLAN §2.
 - Every package has its own short `CLAUDE.md`. Read it before editing that package.
 
@@ -52,7 +53,7 @@ A local, single-user web app. It runs AI coding CLI sessions (Claude Code for th
 - Windows is first-class: use `path` APIs, not string concatenation; no POSIX-only shell in scripts; resolve `.cmd`/`.exe` binaries.
 - Check current dependency versions when installing. Don't pin from memory.
 - Start tasks with `/start-task <id>` and finish with `/finish-task`; they perform the steps below. Until the MVP ships (Phase 4a), run whole phases with `/run-phase <n>`, which does the same per task (ADR 0027). Claude pushes branches; the user merges.
-- Before finishing: `npm run check` green, an adversarial `reviewer` pass that gets artifacts only (the task, its clauses, the diff command; never your summary or claims) and a security pass where due, eval cases for any reviewer rules due with the task (`evals/harness/reviewer/uncovered.json`; CI fails if they're overdue), a locked test commit then one conventional commit per task (`feat(server): …`), and the task's checkbox ticked in `docs/PLAN.md`.
+- Before finishing: `npm run check` green; one adversarial `reviewer` pass that gets artifacts only (the task, its clauses, the diff command; never your summary or claims), with security checks where due; every finding triaged (fix, `docs/backlog.md`, reject with a cited decision, or the user decides; ADR 0031); a locked test commit then one conventional commit per task (`feat(server): …`); and the task's checkbox ticked in `docs/PLAN.md`.
 - Harness changes follow the principles in `docs/dev-harness.md` (procedures and checks beat prose; add agents or hooks only on evidence).
 - If the plan is wrong or ambiguous, stop and say so. Propose the plan edit rather than guessing.
 

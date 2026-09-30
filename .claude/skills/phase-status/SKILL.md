@@ -23,8 +23,7 @@ Produce a short, factual status report for micro-minds. **Do not edit any file, 
    - Task ids referenced in commits that don't exist in PLAN.md → **"unknown task id"**.
    - Run `git status --short`. If the working tree is dirty, say so. In-progress work may explain a mismatch.
 4. **Current phase and next task.** The current phase is the earliest phase with an unchecked task. The next task is the first unchecked task in it, in document order. If tasks in that phase are independent (PLAN §14.4 allows parallel subagents when they don't touch the same files), mention up to two other unchecked tasks that could run in parallel, but only when their scopes clearly don't overlap.
-   - **Eval cases due:** read `evals/harness/reviewer/uncovered.json` and list the rule IDs whose `due` is exactly the next task's id. That task's PR must add a planted case for each (see `evals/harness/README.md#coverage-schedule-enforced`).
-   - **Overdue:** list any entry whose `due` task is already ticked. CI's `coverage.test.ts` should be failing; report it as a mismatch.
+   - **Backlog:** list the items in `docs/backlog.md` whose "Where it belongs" names the next task (ADR 0031).
 5. **Phase gate.** Quote the phase's "Done when" line and say which parts are evidently met or not met from the repo (for example, `.github/workflows/ci.yml` exists; `npm run eval:harness` has a runner at `evals/harness/reviewer/run.ts`). Don't run `npm run check` or any eval; report what you can see.
 6. **Open questions.** For each item in PLAN §13, look in `docs/decisions/*.md` (Grep for the topic keywords, for example "run in place", "retention", "first prompt", "2.5D"). Mark it **decided (ADR NNNN)** or **open**. Flag an open question only as "blocking" when the next task depends on it (for example question 5 blocks 3.6).
 
@@ -36,8 +35,7 @@ Produce a short, factual status report for micro-minds. **Do not edit any file, 
 **Current phase:** Phase N — <title> (<done>/<total> tasks)
 **Next task:** N.M <title>
 **Could run in parallel:** N.K <title> (or "none")
-**Eval cases due with N.M:** RULE-ID, RULE-ID (or "none")
-**Overdue eval rules:** none (or RULE-ID due M.K, ticked)
+**Backlog for N.M:** <items, or "none">
 **Next action:** `/run-phase N` (the default until the MVP ships, Phase 4a), or `/start-task N.M` for one task
 
 | Phase | Done | Total |

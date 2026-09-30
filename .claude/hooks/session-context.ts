@@ -1,6 +1,6 @@
 // SessionStart context hook (docs/dev-harness.md, principle 5: dynamic state is computed, not
 // written down). It injects a short block with the branch, the dirty-tree size, the current PLAN
-// phase, the next unticked task, the reviewer rules due with it, and the task workflow, so
+// phase, the next unticked task, and the task workflow, so
 // CLAUDE.md doesn't have to carry any of that.
 //
 // Contract (verified against https://code.claude.com/docs/en/hooks, Claude Code 2.1.283):
@@ -15,19 +15,12 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import {
-  parsePlanTasks,
-  parseUncovered,
-  rulesDueWith,
-  type UncoveredSchedule,
-} from '../../evals/harness/reviewer/coverage.ts';
+import { parsePlanTasks } from '../../evals/harness/reviewer/coverage.ts';
 
-export const MAX_LINES = 25;
 export const MAX_LINE_LENGTH = 240;
 export const MAX_TITLE_LENGTH = 120;
 
 export const PLAN_PATH = 'docs/PLAN.md';
-export const UNCOVERED_PATH = 'evals/harness/reviewer/uncovered.json';
 
 export interface ContextInput {
   /** `git rev-parse --abbrev-ref HEAD`; `HEAD` when detached; null when git failed. */
@@ -38,8 +31,6 @@ export interface ContextInput {
   readonly tasks: ReadonlyMap<string, boolean>;
   /** PLAN task id → the text after the id on its checkbox line. */
   readonly titles: ReadonlyMap<string, string>;
-  /** The eval-coverage schedule; null when uncovered.json couldn't be read or parsed. */
-  readonly schedule: UncoveredSchedule | null;
 }
 
 // `- [ ] 2.9 Security tests: ...` in docs/PLAN.md §10 (same shape as coverage.ts's TASK_LINE).
@@ -103,14 +94,6 @@ function branchLine(branch: string | null, dirtyCount: number | null): string {
   return `Branch: ${name} (${tree})`;
 }
 
-function rulesLine(task: string, schedule: UncoveredSchedule | null): string {
-  if (schedule === null)
-    return `Reviewer rules due with ${task}: unknown (${UNCOVERED_PATH} unreadable)`;
-  const due = rulesDueWith(task, schedule);
-  if (due.length === 0) return `Reviewer rules due with ${task}: none`;
-  return `Reviewer rules due with ${task} (each needs a planted eval case before the task is ticked): ${due.join(', ')}`;
-}
-
 /** The context block. Pure: every input is plain data. */
 export function buildContext(input: ContextInput): string {
   const lines = [
@@ -134,7 +117,6 @@ export function buildContext(input: ContextInput): string {
     const title = truncate(input.titles.get(next) ?? '', MAX_TITLE_LENGTH);
     lines.push(`Current phase: ${phase} (${done} of ${inPhase.length} tasks ticked)`);
     lines.push(`Next task: ${next}${title.length > 0 ? ` ${title}` : ''}`);
-    lines.push(rulesLine(next, input.schedule));
     lines.push(
       `Workflow: \`/start-task ${next}\` (scope, branch, plan, tests locked by the test writer) → implement against them → \`/finish-task\` (check and lock, independent review, tick, commit). Read the task in ${PLAN_PATH} first.`,
     );
@@ -143,10 +125,7 @@ export function buildContext(input: ContextInput): string {
     );
   }
 
-  const capped = lines.map((line) => truncate(line, MAX_LINE_LENGTH));
-  return capped.length <= MAX_LINES
-    ? capped.join('\n')
-    : [...capped.slice(0, MAX_LINES - 1), '…'].join('\n');
+  return lines.map((line) => truncate(line, MAX_LINE_LENGTH)).join('\n');
 }
 
 /** The SessionStart JSON output that adds `context` to Claude's context. */
@@ -172,8 +151,8 @@ function tryOrNull<T>(fn: () => T): T | null {
 }
 
 /**
- * Gathers the context input. Git and the coverage schedule are optional (their line says
- * "unknown"); PLAN.md is required, so a read failure throws and the hook prints nothing.
+ * Gathers the context input. Git is optional (its line says "unknown"); PLAN.md is required, so
+ * a read failure throws and the hook prints nothing.
  */
 export function gatherInput(io: ContextIo): ContextInput {
   const plan = io.readText(PLAN_PATH);
@@ -185,16 +164,11 @@ export function gatherInput(io: ContextIo): ContextInput {
         .split(/\r?\n/)
         .filter((line) => line.trim().length > 0).length,
   );
-  const schedule = tryOrNull(() => {
-    const parsed = parseUncovered(JSON.parse(io.readText(UNCOVERED_PATH)));
-    return parsed.ok ? parsed.value : null;
-  });
   return {
     branch: branch === null || branch.length === 0 ? null : branch,
     dirtyCount,
     tasks: parsePlanTasks(plan),
     titles: parseTaskTitles(plan),
-    schedule,
   };
 }
 

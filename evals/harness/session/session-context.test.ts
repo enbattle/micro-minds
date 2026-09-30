@@ -13,26 +13,20 @@ import {
   formatOutput,
   gatherInput,
   MAX_LINE_LENGTH,
-  MAX_LINES,
   MAX_TITLE_LENGTH,
   nextTask,
   PLAN_PATH,
   parseTaskTitles,
   phaseOf,
   truncate,
-  UNCOVERED_PATH,
 } from '../../../.claude/hooks/session-context.ts';
-import { parsePlanTasks, type UncoveredSchedule } from '../reviewer/coverage.ts';
+import { parsePlanTasks } from '../reviewer/coverage.ts';
 
 const REPO_ROOT = path.join(import.meta.dirname, '..', '..', '..');
 const HOOK = path.join(REPO_ROOT, '.claude', 'hooks', 'session-context.ts');
 
 function tasks(entries: readonly (readonly [string, boolean])[]): ReadonlyMap<string, boolean> {
   return new Map(entries);
-}
-
-function schedule(entries: Record<string, string>): UncoveredSchedule {
-  return new Map(Object.entries(entries).map(([rule, due]) => [rule, { due, why: 'test' }]));
 }
 
 function input(overrides: Partial<ContextInput> = {}): ContextInput {
@@ -44,7 +38,6 @@ function input(overrides: Partial<ContextInput> = {}): ContextInput {
       ['1.1', false],
     ]),
     titles: new Map([['1.1', 'Capture sink.']]),
-    schedule: schedule({}),
     ...overrides,
   };
 }
@@ -159,29 +152,16 @@ describe('buildContext', () => {
           ['1.3', false],
         ]),
         titles: new Map([['1.2', 'Record scenarios.']]),
-        schedule: schedule({ 'B-rule': '1.2', 'A-rule': '1.2', 'C-rule': '2.1' }),
         dirtyCount: 3,
       }),
     );
     expect(text).toContain('Branch: feat/x (3 uncommitted files)');
     expect(text).toContain('Current phase: 1 (1 of 3 tasks ticked)');
     expect(text).toContain('Next task: 1.2 Record scenarios.');
-    expect(text).toMatch(/Reviewer rules due with 1\.2 .*: A-rule, B-rule$/m);
-    expect(text).not.toContain('C-rule');
     expect(text).toContain('`/start-task 1.2`');
     expect(text).toContain('`/finish-task`');
     expect(text).toContain('`/run-phase 1`');
     expect(text).not.toContain('WARNING');
-  });
-
-  it('says none when no rules are due', () => {
-    expect(buildContext(input())).toContain('Reviewer rules due with 1.1: none');
-  });
-
-  it('says unknown when the schedule is unreadable', () => {
-    expect(buildContext(input({ schedule: null }))).toContain(
-      `Reviewer rules due with 1.1: unknown (${UNCOVERED_PATH} unreadable)`,
-    );
   });
 
   it('picks 4a tasks once phases 0-3 are done', () => {
@@ -227,21 +207,15 @@ describe('buildContext', () => {
     expect(buildContext(input(overrides)).split('\n')[1]).toBe(expected);
   });
 
-  it('caps the title, each line and the line count', () => {
+  it('caps the title and each line', () => {
     const long = 'x'.repeat(500);
-    const text = buildContext(input({ titles: new Map([['1.1', long]]) }));
+    const text = buildContext(input({ titles: new Map([['1.1', long]]), branch: long }));
     const nextLine = text.split('\n').find((line) => line.startsWith('Next task:')) ?? '';
     expect(nextLine.length).toBeLessThanOrEqual('Next task: 1.1 '.length + MAX_TITLE_LENGTH);
     expect(nextLine.endsWith('…')).toBe(true);
-
-    const manyRules = Object.fromEntries(
-      Array.from({ length: 200 }, (_, i) => [`R-rule-${i}`, '1.1']),
-    );
-    const capped = buildContext(input({ schedule: schedule(manyRules) }));
-    for (const line of capped.split('\n')) {
+    for (const line of text.split('\n')) {
       expect(line.length).toBeLessThanOrEqual(MAX_LINE_LENGTH);
     }
-    expect(capped.split('\n').length).toBeLessThanOrEqual(MAX_LINES);
   });
 });
 
@@ -255,17 +229,16 @@ describe('formatOutput', () => {
 
 describe('gatherInput', () => {
   const plan = '- [x] 0.1 Done.\n- [ ] 1.1 Next one.\n';
-  const uncovered = JSON.stringify({ $comment: 'x', 'A-rule': { due: '1.1', why: 'y' } });
 
   function io(overrides: Partial<ContextIo> = {}): ContextIo {
     return {
-      readText: (file) => (file === PLAN_PATH ? plan : uncovered),
+      readText: () => plan,
       git: (args) => (args[0] === 'rev-parse' ? 'main\n' : ' M a.ts\r\n?? b.ts\n\n'),
       ...overrides,
     };
   }
 
-  it('reads git, PLAN and the schedule', () => {
+  it('reads git and PLAN', () => {
     const gathered = gatherInput(io());
     expect(gathered.branch).toBe('main');
     expect(gathered.dirtyCount).toBe(2);
@@ -274,33 +247,24 @@ describe('gatherInput', () => {
       ['1.1', false],
     ]);
     expect(gathered.titles.get('1.1')).toBe('Next one.');
-    expect(gathered.schedule?.get('A-rule')?.due).toBe('1.1');
   });
 
-  it('degrades git and schedule failures to null', () => {
+  it('degrades git failures to null', () => {
     const gathered = gatherInput(
       io({
         git: () => {
           throw new Error('no git');
         },
-        readText: (file) => (file === PLAN_PATH ? plan : '{not json'),
       }),
     );
     expect(gathered.branch).toBeNull();
     expect(gathered.dirtyCount).toBeNull();
-    expect(gathered.schedule).toBeNull();
   });
 
-  it('treats an invalid schedule and an empty branch as unknown', () => {
-    const gathered = gatherInput(
-      io({
-        git: (args) => (args[0] === 'rev-parse' ? '\n' : ''),
-        readText: (file) => (file === PLAN_PATH ? plan : '{"X-rule": {"due": "soon"}}'),
-      }),
-    );
+  it('treats an empty branch as unknown', () => {
+    const gathered = gatherInput(io({ git: (args) => (args[0] === 'rev-parse' ? '\n' : '') }));
     expect(gathered.branch).toBeNull();
     expect(gathered.dirtyCount).toBe(0);
-    expect(gathered.schedule).toBeNull();
   });
 
   it('throws when PLAN.md is unreadable, so the hook prints nothing', () => {
@@ -316,7 +280,7 @@ describe('gatherInput', () => {
   });
 });
 
-describe('the real hook (subprocess)', () => {
+describe('the real hook (subprocess)', { timeout: 15_000 }, () => {
   function run(env: NodeJS.ProcessEnv) {
     return spawnSync(process.execPath, [HOOK], {
       cwd: REPO_ROOT,
@@ -342,7 +306,7 @@ describe('the real hook (subprocess)', () => {
     } else {
       expect(context).toContain(`Next task: ${expected} `);
     }
-    expect(context.split('\n').length).toBeLessThanOrEqual(MAX_LINES);
+    expect(context.split('\n').length).toBeLessThanOrEqual(10);
   });
 
   it('fails open: prints nothing on stdout and exits 0 when PLAN.md is missing', () => {
