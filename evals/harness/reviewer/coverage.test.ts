@@ -1,20 +1,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  checkCoverage,
-  parsePlanTasks,
-  parseUncovered,
-  rulesDueWith,
-  type UncoveredSchedule,
-} from './coverage.ts';
+import { checkCoverage, parsePlanTasks, parseUncovered, type UncoveredList } from './coverage.ts';
 import { extractRuleCatalog, parseExpected } from './score.ts';
 
 const REPO_ROOT = path.join(import.meta.dirname, '..', '..', '..');
 const CASES_DIR = path.join(import.meta.dirname, 'cases');
 
-function schedule(entries: Record<string, string>): UncoveredSchedule {
-  return new Map(Object.entries(entries).map(([id, due]) => [id, { due, why: 'test' }]));
+function list(ids: readonly string[]): UncoveredList {
+  return new Map(ids.map((id) => [id, 'no miss yet']));
 }
 
 describe('parsePlanTasks', () => {
@@ -35,80 +29,51 @@ describe('parsePlanTasks', () => {
 });
 
 describe('parseUncovered', () => {
-  it('accepts valid entries and skips $comment', () => {
-    const parsed = parseUncovered({ $comment: 'x', 'A-rule': { due: '2.9', why: 'server' } });
-    expect(parsed.ok && [...parsed.value]).toEqual([['A-rule', { due: '2.9', why: 'server' }]]);
+  it('accepts rule → reason entries and skips $comment', () => {
+    const parsed = parseUncovered({ $comment: 'x', 'A-rule': 'no miss yet' });
+    expect(parsed.ok && [...parsed.value]).toEqual([['A-rule', 'no miss yet']]);
   });
 
   it.each([
     ['not an object', []],
-    ['entry not an object', { 'A-rule': '2.9' }],
-    ['bad task id', { 'A-rule': { due: 'phase 2', why: 'x' } }],
-    ['missing why', { 'A-rule': { due: '2.9' } }],
-    ['blank why', { 'A-rule': { due: '2.9', why: '  ' } }],
+    ['a reason that is not a string', { 'A-rule': { due: '2.9' } }],
+    ['a blank reason', { 'A-rule': '  ' }],
   ])('rejects %s', (_label, value) => {
     expect(parseUncovered(value).ok).toBe(false);
   });
 });
 
 describe('checkCoverage', () => {
-  const tasks = new Map([
-    ['1.4', true],
-    ['2.9', false],
-  ]);
-  const base = { catalog: ['A-one', 'B-two'], tasks };
+  const catalog = ['A-one', 'B-two'];
 
-  it('passes when every rule is covered or scheduled against future work', () => {
-    const errors = checkCoverage({
-      ...base,
-      covered: new Set(['A-one']),
-      schedule: schedule({ 'B-two': '2.9' }),
-    });
-    expect(errors).toEqual([]);
+  it('passes when every rule is covered or listed', () => {
+    expect(
+      checkCoverage({ catalog, covered: new Set(['A-one']), uncovered: list(['B-two']) }),
+    ).toEqual([]);
   });
 
-  it('fails for a rule with neither a case nor a schedule entry', () => {
-    const errors = checkCoverage({ ...base, covered: new Set(['A-one']), schedule: new Map() });
-    expect(errors).toEqual([expect.stringContaining('B-two has no eval case')]);
+  it('fails for a rule with neither a case nor a list entry', () => {
+    expect(checkCoverage({ catalog, covered: new Set(['A-one']), uncovered: list([]) })).toEqual([
+      expect.stringContaining('B-two has no eval case'),
+    ]);
   });
 
-  it('fails when a rule is overdue because its task is ticked', () => {
-    const errors = checkCoverage({
-      ...base,
-      covered: new Set(['A-one']),
-      schedule: schedule({ 'B-two': '1.4' }),
-    });
-    expect(errors).toEqual([expect.stringContaining('B-two was due with task 1.4')]);
-  });
-
-  it('fails for stale, unknown and mis-scheduled entries', () => {
-    const errors = checkCoverage({
-      ...base,
-      covered: new Set(['A-one', 'B-two']),
-      schedule: schedule({ 'A-one': '2.9', 'Z-gone': '2.9' }),
-    });
-    expect(errors).toEqual([
+  it('fails for listed rules that are covered or unknown', () => {
+    expect(
+      checkCoverage({
+        catalog,
+        covered: new Set(['A-one', 'B-two']),
+        uncovered: list(['A-one', 'Z-gone']),
+      }),
+    ).toEqual([
       expect.stringContaining('A-one now has an eval case'),
       expect.stringContaining('Z-gone is in uncovered.json but not in'),
-    ]);
-    const missingTask = checkCoverage({
-      ...base,
-      covered: new Set(['A-one']),
-      schedule: schedule({ 'B-two': '7.1' }),
-    });
-    expect(missingTask).toEqual([expect.stringContaining("7.1, which doesn't exist")]);
-  });
-
-  it('lists the rules due with a task, sorted', () => {
-    expect(rulesDueWith('2.9', schedule({ 'C-x': '2.9', 'A-y': '2.9', 'B-z': '1.4' }))).toEqual([
-      'A-y',
-      'C-x',
     ]);
   });
 });
 
-describe('the repository coverage schedule', () => {
-  it('holds: every reviewer rule is covered by a case or scheduled against an unticked task', () => {
+describe('the repository eval coverage', () => {
+  it('holds: every reviewer rule is covered by a case or listed with a reason', () => {
     const catalog = extractRuleCatalog(
       readFileSync(path.join(REPO_ROOT, '.claude', 'agents', 'reviewer.md'), 'utf8'),
     );
@@ -125,8 +90,6 @@ describe('the repository coverage schedule', () => {
       JSON.parse(readFileSync(path.join(import.meta.dirname, 'uncovered.json'), 'utf8')),
     );
     if (!parsed.ok) throw new Error(parsed.error);
-    const tasks = parsePlanTasks(readFileSync(path.join(REPO_ROOT, 'docs', 'PLAN.md'), 'utf8'));
-
-    expect(checkCoverage({ catalog, covered, schedule: parsed.value, tasks })).toEqual([]);
+    expect(checkCoverage({ catalog, covered, uncovered: parsed.value })).toEqual([]);
   });
 });

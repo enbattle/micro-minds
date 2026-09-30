@@ -7,7 +7,7 @@ The AI developer harness (`CLAUDE.md`, `.claude/agents/`, `.claude/skills/`, `.c
 | **Guard evals** (`guard/`) | The `PreToolUse` guard hook allows and blocks a table of commands | yes | yes (`npm test`) |
 | **Reviewer evals** (`reviewer/`) | The `reviewer` agent finds planted violations and stays quiet on clean code | no (calls the model) | **no**: costs tokens |
 
-The reviewer suite also has deterministic parts that do run in CI through the `harness` Vitest project: `score.test.ts`, `invocation.test.ts`, `resolve-bin.test.ts`, `cases.test.ts`, which validates every case file against the agent's rule catalog, and `coverage.test.ts`, which enforces the coverage schedule (see [Growing the harness](#growing-the-harness)).
+The reviewer suite also has deterministic parts that do run in CI through the `harness` Vitest project: `score.test.ts`, `invocation.test.ts`, `resolve-bin.test.ts`, `cases.test.ts`, which validates every case file against the agent's rule catalog, and `coverage.test.ts`, which checks every rule is covered by a case or listed with a reason (see [Growing the harness](#growing-the-harness)).
 
 ## Reviewer evals
 
@@ -81,7 +81,7 @@ Also re-run after a Claude Code upgrade or a model change. Results vary from run
 1. Create `reviewer/cases/<kebab-name>/`. Clean cases start with `clean-`.
 2. Write `change.diff` as a real unified diff with `a/`/`b/` paths as they would be in this repo (`git diff` output, LF line endings). Keep it small and otherwise correct, so the only defects are the planted ones. Put a plausible justification next to the violation so it takes a careful read to spot it. Clean cases should include their tests, and those tests must cover every branch the code adds (the first baseline caught an untested 429 path). A case may import relative helpers it doesn't include; the eval prompt tells the reviewer that the diff is an excerpt and that such modules exist (`buildPrompt` in `reviewer/invocation.ts`).
 3. Write `expected.json`. `mustFind` lists every planted rule ID. `mustNotFind` lists nearby rules the code deliberately satisfies (for example `SEC-token-compare` when the code does use `timingSafeEqual`). `notes` explains both.
-4. If a new rule ID is needed, add it to a catalog table in `.claude/agents/reviewer.md` first. If the case covers a rule listed in `reviewer/uncovered.json`, remove that entry in the same PR (CI fails on stale entries).
+4. If a new rule ID is needed, add it to a catalog table in `.claude/agents/reviewer.md` first. If the case covers a rule listed in `reviewer/uncovered.json`, remove that entry in the same PR (CI fails on stale entries). Add a case for one of the triggers below, not per task.
 5. Run `npm run eval:harness -- --dry-run` and `npx vitest run --project harness`, then run the new case for real: `npm run eval:harness -- <kebab-name>`.
 
 ## Growing the harness
@@ -90,34 +90,29 @@ The harness is expected to grow with the codebase. Growth is driven by the event
 deterministic parts are enforced in CI rather than left to memory
 ([docs/dev-harness.md](../../docs/dev-harness.md), principle 1).
 
-### Coverage schedule (enforced)
+### Coverage accounting (enforced)
 
-Every rule ID in the reviewer's catalog must either be exercised by a case's `mustFind` or be
-listed in [`reviewer/uncovered.json`](reviewer/uncovered.json) with the PLAN task that first
-writes the code it governs:
+Cases come from real events, not from a schedule (ADR 0031): the triggers below. Every rule ID in
+the reviewer's catalog is either exercised by a case's `mustFind` or listed in
+[`reviewer/uncovered.json`](reviewer/uncovered.json) with the reason it has no case yet, so what
+isn't measured stays visible:
 
 ```json
-"SEC-token-compare": { "due": "2.7", "why": "HookIngest validates hook tokens" }
+"SEC-token-compare": "No miss or false positive yet. First code it governs: task 2.7 (HookIngest validates hook tokens)."
 ```
 
-`coverage.test.ts` reads the checkboxes in `docs/PLAN.md` and fails CI when:
-
-- a rule has no case and no schedule entry (for example, a new rule added to the catalog);
-- a rule's due task is ticked while the rule is still uncovered (**overdue**);
-- an entry points at a task that doesn't exist, or at a rule that isn't in the catalog;
-- an entry is stale because a case now covers it.
-
-So the list can only shrink. A new rule may be scheduled against future work, but never against
-work that is already done: that has to come with a case in the same PR. When you start a task,
-check which rules are due with it (`/start-task <id>` lists them, and `/finish-task` confirms they were added; its `--run-evals` flag authorizes running the new cases).
+`coverage.test.ts` fails CI when a rule has neither a case nor an entry (for example, a new rule
+added to the catalog), when an entry names a rule that isn't in the catalog, or when an entry is
+stale because a case now covers it. The run summary reports misses (recall) and false positives
+(clean cases flagged, `mustNotFind` hits) side by side.
 
 ### Triggers
 
 | Event | Required harness change |
 |---|---|
-| A new hard rule or reviewer rule ID | A planted case in the same PR, or a schedule entry due with an unticked task (the test enforces this) |
+| A new hard rule or reviewer rule ID | A planted case in the same PR, or an `uncovered.json` entry saying why not yet (the test enforces one or the other) |
 | The reviewer misses a real problem (found later in a PR, in CI or in use) | A regression case made from that diff, trimmed and sanitized |
-| The reviewer flags good code (a real false positive) | A clean case, or a `mustNotFind` entry on the closest case |
+| The reviewer flags good code (a real false positive, confirmed in `/finish-task` triage) | A clean case, or a `mustNotFind` entry on the closest case |
 | The guard is bypassed or over-blocks | A new row in `guard/guard.test.ts` (runs in CI) |
 | A reviewer model or Claude Code upgrade | A full run with `--trials 3` and a new baseline row |
 | A change to `CLAUDE.md`, `.claude/agents/`, PLAN §2 or §9 | A full run and a new baseline row |
@@ -130,7 +125,7 @@ Before a phase is marked complete (docs/PLAN.md §14):
    overall recall must stay at or above the threshold.
 2. Add a row to the baseline history below, with the exact model ID and Claude Code version the
    runner prints.
-3. `coverage.test.ts` is green, meaning no rule is overdue for any of the phase's tasks.
+3. Any false positive triage confirmed during the phase has its clean case or `mustNotFind` entry.
 
 ## Baseline history
 

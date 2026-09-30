@@ -1,83 +1,23 @@
 {
-  "$comment": "Reviewer rules without a planted eval case yet, each due with the PLAN task that first writes the code it governs. CI fails if a due task is ticked while its rule is still listed (coverage.test.ts). Remove an entry in the same PR that adds its case. See evals/harness/README.md#growing-the-harness.",
-  "HR10-worktree-location": {
-    "due": "2.5",
-    "why": "WorktreeManager"
-  },
-  "WIN-home-dir": {
-    "due": "2.5",
-    "why": "Worktree and data paths under MICROMINDS_HOME"
-  },
-  "HR2-global-config-write": {
-    "due": "2.6",
-    "why": "SessionManager writes per-session settings for hook injection"
-  },
-  "HR12-steers-agent": {
-    "due": "2.6",
-    "why": "SessionManager is the first code that writes to agent PTYs"
-  },
-  "WIN-process-tree": {
-    "due": "2.6",
-    "why": "SessionManager stop and kill"
-  },
-  "SEC-token-compare": {
-    "due": "2.7",
-    "why": "HookIngest validates hook tokens"
-  },
-  "SEC-ingest-hardening": {
-    "due": "2.7",
-    "why": "HookIngest body limits, validation and rate limits"
-  },
-  "HR3-missing-ui-auth": {
-    "due": "2.8",
-    "why": "WS server authentication"
-  },
-  "HR3-missing-origin-check": {
-    "due": "2.8",
-    "why": "WS server Origin and Host checks"
-  },
-  "SEC-token-exposure": {
-    "due": "2.8",
-    "why": "UI session cookie and bootstrap-code handling (ADR 0026)"
-  },
-  "SEC-network-call": {
-    "due": "2.8",
-    "why": "The server is complete enough to make outbound calls by task 2.8"
-  },
-  "D22-impure-mood": {
-    "due": "2.13",
-    "why": "mood() selector"
-  },
-  "SEC-telemetry-config": {
-    "due": "2.14",
-    "why": "Usage capture configures per-session OpenTelemetry"
-  },
-  "GEN-error-handling": {
-    "due": "2.14",
-    "why": "Catch-all; use a realistic server bug from Phase 2"
-  },
-  "GEN-security": {
-    "due": "2.14",
-    "why": "Catch-all; use a realistic server bug from Phase 2"
-  },
-  "GEN-performance": {
-    "due": "2.14",
-    "why": "Catch-all; use a realistic server bug from Phase 2"
-  },
-  "ARCH-ui-one-way": {
-    "due": "3.2",
-    "why": "zustand store applying events through reduce()"
-  },
-  "SEC-usage-cost-source": {
-    "due": "3.10",
-    "why": "Usage display with the API-equivalent label"
-  },
-  "SEC-worktree-removal": {
-    "due": "2.5",
-    "why": "WorktreeManager removal and git hardening"
-  },
-  "SEC-terminal-escape": {
-    "due": "3.3",
-    "why": "Terminal drawer: xterm.js addons, link handling and clipboard"
-  }
+  "$comment": "Reviewer rules with no planted eval case yet, and why. Cases come from real misses and confirmed false positives (ADR 0031, evals/harness/README.md#triggers); remove an entry in the change that adds its case. coverage.test.ts checks every catalog rule is covered or listed here.",
+  "HR10-worktree-location": "No miss or false positive yet. First code it governs: task 2.5 (WorktreeManager).",
+  "WIN-home-dir": "No miss or false positive yet. First code it governs: task 2.5 (Worktree and data paths under MICROMINDS_HOME).",
+  "HR2-global-config-write": "No miss or false positive yet. First code it governs: task 2.6 (SessionManager writes per-session settings for hook injection).",
+  "HR12-steers-agent": "No miss or false positive yet. First code it governs: task 2.6 (SessionManager is the first code that writes to agent PTYs).",
+  "WIN-process-tree": "No miss or false positive yet. First code it governs: task 2.6 (SessionManager stop and kill).",
+  "SEC-token-compare": "No miss or false positive yet. First code it governs: task 2.7 (HookIngest validates hook tokens).",
+  "SEC-ingest-hardening": "No miss or false positive yet. First code it governs: task 2.7 (HookIngest body limits, validation and rate limits).",
+  "HR3-missing-ui-auth": "No miss or false positive yet. First code it governs: task 2.8 (WS server authentication).",
+  "HR3-missing-origin-check": "No miss or false positive yet. First code it governs: task 2.8 (WS server Origin and Host checks).",
+  "SEC-token-exposure": "No miss or false positive yet. First code it governs: task 2.8 (UI session cookie and bootstrap-code handling (ADR 0026)).",
+  "SEC-network-call": "No miss or false positive yet. First code it governs: task 2.8 (The server is complete enough to make outbound calls by task 2.8).",
+  "D22-impure-mood": "No miss or false positive yet. First code it governs: task 2.13 (mood() selector).",
+  "SEC-telemetry-config": "No miss or false positive yet. First code it governs: task 2.14 (Usage capture configures per-session OpenTelemetry).",
+  "GEN-error-handling": "No miss or false positive yet. First code it governs: task 2.14 (Catch-all; use a realistic server bug from Phase 2).",
+  "GEN-security": "No miss or false positive yet. First code it governs: task 2.14 (Catch-all; use a realistic server bug from Phase 2).",
+  "GEN-performance": "No miss or false positive yet. First code it governs: task 2.14 (Catch-all; use a realistic server bug from Phase 2).",
+  "ARCH-ui-one-way": "No miss or false positive yet. First code it governs: task 3.2 (zustand store applying events through reduce()).",
+  "SEC-usage-cost-source": "No miss or false positive yet. First code it governs: task 3.10 (Usage display with the API-equivalent label).",
+  "SEC-worktree-removal": "No miss or false positive yet. First code it governs: task 2.5 (WorktreeManager removal and git hardening).",
+  "SEC-terminal-escape": "No miss or false positive yet. First code it governs: task 3.3 (Terminal drawer: xterm.js addons, link handling and clipboard)."
 }
