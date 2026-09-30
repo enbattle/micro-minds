@@ -105,3 +105,123 @@ describe('createLogger (C13)', () => {
     expect(lines[0]).not.toContain(SECRET);
   });
 });
+
+// Task 2.7, clause C11: follow-up tests from the 2.6 review (docs/backlog.md). Payload keys are
+// left out at info and above wherever they sit (arrays, child bindings, format arguments); token
+// values are censored by key name at any depth and under any parent key; a shared (non-cyclic)
+// object is logged in full each time; a logged Error keeps its type and message.
+describe('createLogger follow-ups (2.7 C11)', () => {
+  function capture(log: (logger: ReturnType<typeof createLogger>) => void) {
+    const sink = logSink();
+    const logger = createLogger({ level: 'trace', destination: sink });
+    log(logger);
+    return sink;
+  }
+
+  const PAYLOADS_ELSEWHERE: Array<{
+    name: string;
+    log: (logger: ReturnType<typeof createLogger>, level: LevelName) => void;
+  }> = [
+    {
+      name: 'inside an array',
+      log: (logger, level) =>
+        logger[level]({ events: [{ raw: { x: PAYLOAD_MARK } }, { body: PAYLOAD_MARK }] }, 'm'),
+    },
+    {
+      name: 'in a child-logger binding',
+      log: (logger, level) => logger.child({ payload: { prompt: PAYLOAD_MARK } })[level]('m'),
+    },
+    {
+      name: 'in an object format argument',
+      log: (logger, level) => logger[level]('m %o', { raw: { x: PAYLOAD_MARK } }),
+    },
+  ];
+
+  describe.each(PAYLOADS_ELSEWHERE)('a payload $name', ({ log }) => {
+    it.each(['info', 'warn', 'error', 'fatal'] as const)('is left out at %s', (level) => {
+      const sink = capture((logger) => log(logger, level));
+
+      expect(sink.lines).toHaveLength(1);
+      expect(sink.lines[0]).not.toContain(PAYLOAD_MARK);
+    });
+  });
+
+  const TOKENS_ANYWHERE: Array<{
+    name: string;
+    log: (logger: ReturnType<typeof createLogger>, level: LevelName) => void;
+  }> = [
+    {
+      name: 'MICROMINDS_HOOK_TOKEN under launchEnv',
+      log: (logger, level) => logger[level]({ launchEnv: { MICROMINDS_HOOK_TOKEN: SECRET } }, 'm'),
+    },
+    {
+      name: 'a top-level MICROMINDS_HOOK_TOKEN',
+      log: (logger, level) => logger[level]({ MICROMINDS_HOOK_TOKEN: SECRET }, 'm'),
+    },
+    {
+      name: 'a hookToken five levels deep',
+      log: (logger, level) => logger[level]({ a: { b: { c: { d: { hookToken: SECRET } } } } }, 'm'),
+    },
+    {
+      name: 'an authorization header under an unusual parent key',
+      log: (logger, level) =>
+        logger[level]({ upstream: { request: { authorization: `Bearer ${SECRET}` } } }, 'm'),
+    },
+    {
+      name: 'a hookToken inside an array',
+      log: (logger, level) => logger[level]({ launches: [{ ctx: { hookToken: SECRET } }] }, 'm'),
+    },
+    {
+      name: 'a hookToken in a child-logger binding',
+      log: (logger, level) => logger.child({ launch: { hookToken: SECRET } })[level]('m'),
+    },
+    {
+      name: 'a hookToken in an object format argument',
+      log: (logger, level) => logger[level]('m %o', { hookToken: SECRET }),
+    },
+  ];
+
+  describe.each(TOKENS_ANYWHERE)('censors $name', ({ log }) => {
+    it.each(['trace', 'error'] as const)('at %s', (level) => {
+      const sink = capture((logger) => log(logger, level));
+
+      expect(sink.lines).toHaveLength(1);
+      expect(sink.lines[0]).not.toContain(SECRET);
+    });
+  });
+
+  it('an object referenced twice (not a cycle) is logged twice in full, not as circular', () => {
+    const shared = { name: 'shared-value' };
+    const sink = capture((logger) =>
+      logger.info({ first: shared, second: shared, list: [shared, shared] }, 'm'),
+    );
+
+    expect(sink.lines[0]).not.toContain('circular');
+    expect(sink.records()[0]).toMatchObject({
+      first: { name: 'shared-value' },
+      second: { name: 'shared-value' },
+      list: [{ name: 'shared-value' }, { name: 'shared-value' }],
+    });
+  });
+
+  it.each([
+    {
+      name: 'under err',
+      log: (logger: ReturnType<typeof createLogger>) =>
+        logger.error({ err: new TypeError('bad type') }, 'failed'),
+      type: 'TypeError',
+      message: 'bad type',
+    },
+    {
+      name: 'as the first argument',
+      log: (logger: ReturnType<typeof createLogger>) =>
+        logger.error(new RangeError('out of range')),
+      type: 'RangeError',
+      message: 'out of range',
+    },
+  ])('a logged Error keeps its type and message ($name)', ({ log, type, message }) => {
+    const sink = capture(log);
+
+    expect(sink.records()[0]).toMatchObject({ err: { type, message } });
+  });
+});
