@@ -108,12 +108,12 @@ E elevation of privilege.
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
-| E | Injection via repo path, name or first prompt in the spawn | Binary from the provider registry; argv arrays, no `shell: true`; zod on `session.create`. A `.cmd`/`.bat` shim (registry kind `cmd`, e.g. npm's `claude.cmd`) only runs through cmd.exe, which re-parses the command line (twice for a shim forwarding `%*`), so argv quoting doesn't protect the prompt there (a `"` plus `&` runs commands), escaping once still injects, and escaping twice splits the prompt and drops line breaks. Every argument is exposed, not only the prompt (a `&` in the `--settings` path under the user's home splits it). So the spawn runs the shim's real target (`node <cli.js>`, or a native `.exe`), or refuses to start and says why; it never passes arguments through cmd.exe | `WIN-binary-resolution`; the registry: `apps/server/src/providers/registry.test.ts` (absolute PATH entries only, never the cwd), `conformance.test-helpers.ts` (adapters keep the prompt one argv element) | binary lookup enforced by test (2.3); the spawn, including the `cmd` kind: planned: task 2.6 |
+| E | Injection via repo path, name or first prompt in the spawn | Binary from the provider registry; argv arrays, no `shell: true`; zod on `session.create`. A `.cmd`/`.bat` shim (registry kind `cmd`, e.g. npm's `claude.cmd`) only runs through cmd.exe, which re-parses the command line (twice for a shim forwarding `%*`), so argv quoting doesn't protect the prompt there (a `"` plus `&` runs commands), escaping once still injects, and escaping twice splits the prompt and drops line breaks. Every argument is exposed, not only the prompt (a `&` in the `--settings` path under the user's home splits it). So the spawn runs the shim's real target (`node <cli.js>`, or a native `.exe`), or refuses to start and says why; it never passes arguments through cmd.exe | `WIN-binary-resolution`; the registry: `apps/server/src/providers/registry.test.ts` (absolute PATH entries only, never the cwd), `conformance.test-helpers.ts` (adapters keep the prompt one argv element) | enforced by test: binary lookup (2.3); the spawn, including the `cmd` kind (`sessions/binary.ts`; `apps/server/src/sessions/session-manager.test.ts` C4, run on Windows): 2.6; zod on `session.create`: planned: task 2.8 |
 | E | Server writes to a PTY on its own (steering) | Only user `pty.input` reaches a PTY | HR12, ADR 0019 | designed |
 | I | Other env vars (the user's secrets) reach the agent | The CLI inherits the user env anyway; we add only `MICROMINDS_*` and OTEL vars | PLAN §5.5 | designed |
 | D | Many sessions exhaust CPU, memory or plan limits | Session cap (default 8) | PLAN §5.6 | designed |
 | D | Orphaned CLIs after crash; pid reuse on Windows | Verify command line before offering kill; never kill automatically; tree kill | PLAN §5.6; HR11 | planned: task 2.11 |
-| T | Headless xterm and browser xterm both answer terminal queries (DSR, DA) | Discard the headless xterm's `onData` replies; only the focused browser answers | ADR 0016 | planned: task 2.6 |
+| T | Headless xterm and browser xterm both answer terminal queries (DSR, DA) | Discard the headless xterm's `onData` replies; only the focused browser answers | ADR 0016; `sessions/session-manager.terminal.test.ts` (C5) | enforced by test |
 
 ### Terminal rendering in the browser (B5)
 
@@ -126,7 +126,7 @@ end up printed verbatim.
 | S | **OSC 8 hyperlink** (or auto-detected link) with deceptive text | Link clicks open only after a confirmation showing the real URL | `SEC-terminal-escape` | planned: task 3.3 |
 | S | OSC 0/2 title spoofing (fake tab or window titles) | Don't surface terminal titles in app chrome, or show them as plain text next to the real session name | `SEC-terminal-escape` | planned: task 3.3 |
 | T | Report sequences that echo attacker text back as PTY input | Keep xterm.js `windowOptions` reports off (the default) | `SEC-terminal-escape` | planned: task 3.3 |
-| D | Output floods and huge scrollback | Batched `pty.data` (~16 ms); bounded scrollback in both xterms | PLAN §8; ADR 0016 | planned: tasks 2.6, 3.3 |
+| D | Output floods and huge scrollback | Batched `pty.data` (~16 ms); bounded scrollback in both xterms | PLAN §8; ADR 0016 | server side (batching, bounded headless scrollback) enforced by test: `sessions/session-manager.terminal.test.ts` (C5, C6); the browser: planned: task 3.3 |
 
 ### Board, inbox and scene rendering of agent text
 
@@ -146,14 +146,14 @@ end up printed verbatim.
 | T | Removal destroys uncommitted or unpushed work | Explicit confirmed action with dirty and unpushed warnings | PLAN §5.5; HR11; `apps/server/src/worktrees/worktree-manager.test.ts` (C8) | enforced by test (dirty check, task 2.5); planned: task 3.8 (unpushed warnings) |
 | E | Hostile repo's git config (`core.fsmonitor`, `core.hooksPath`) runs code when we run `git` | Argv only, `--` before paths, `-c core.fsmonitor=false`, hooks path set to the null device, inherited `GIT_*` variables dropped | `SEC-worktree-removal`; `apps/server/src/worktrees/worktree-manager.test.ts` (C11, C12) | enforced by test |
 | E | Hostile repo's filter drivers (`filter.<name>.smudge`/`clean` named in `.gitattributes`) run when we check out or `git status` a worktree | None yet: git has no switch that turns off every filter; see docs/backlog.md | `SEC-worktree-removal` | gap |
-| E | Our injected settings widen a hostile repo's power | Per-session file holds only hooks and env; no permission allows, no permission-skip flags; outside the worktree | PLAN §5.2; HR2; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (settings merge with project hooks; the file holds hooks only); planned: task 2.6 |
+| E | Our injected settings widen a hostile repo's power | Per-session file holds only hooks and env; no permission allows, no permission-skip flags; outside the worktree | PLAN §5.2; HR2; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (settings merge with project hooks; the file holds hooks only); the file goes to `sessions/<id>/`, never the worktree: enforced by test (`apps/server/src/sessions/session-manager.test.ts` C1) |
 
 ### Event store and local data (B3)
 
 | | Threat | Mitigation | Where | Status |
 |---|---|---|---|---|
 | I | Secrets at rest in SQLite | Scrubbed, capped `raw`; retention setting; documented wipe | ADR 0014; PLAN §9.7; the scrubber and cap: `packages/shared/src/scrub.test.ts` | scrubber enforced by test (2.2); storage: planned: task 2.7 |
-| I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (the header reads the token only through `allowedEnvVars`); planned: task 2.6 |
+| I | Hook tokens at rest in `sessions/<id>/settings.json` (readable by other agents) | Prefer env interpolation so the file holds no token; delete on shutdown | PLAN §5.6; `spikes/phase-1/SETTINGS.md` | verified: task 1.3 (the header reads the token only through `allowedEnvVars`); no token in any launch file, launch files deleted on exit: enforced by test (`apps/server/src/sessions/session-manager.test.ts` C3, C9); deletion of stale files at startup: planned: task 2.11 |
 | I | Tokens or `raw` in logs; log injection via agent text | Never log tokens or `raw`; pino JSON escapes control characters | HR8; `SEC-token-exposure` | planned: task 2.7 |
 | T | Corrupt DB bricks startup | Move aside and start fresh | PLAN §5.6 | planned: task 2.11 |
 

@@ -47,6 +47,11 @@ Imports only go *into* `packages/shared`, never out of it. Apps never import eac
 | `apps/server/src/providers/fake/adapter.ts`, `fake/cli.ts` | `fakeAdapter` and the fake CLI (`node cli.ts`): echoes its input and replays `fixtures/fake/<scenario>.jsonl` to `/hooks`, failing open | 2.4 |
 | `apps/server/src/providers/index.ts` | `createDefaultRegistry()`: the Claude and fake adapters | 2.4 |
 | `apps/server/src/config/fake-cli.ts` | The fake CLI's env, parsed with zod | 2.4 |
+| `apps/server/src/ids.ts` | `newUlid()` | 2.6 |
+| `apps/server/src/logging/logger.ts` | `createLogger()`: the pino conventions (token redaction paths, payloads only at debug, `child({ sessionId })` per session) | 2.6 |
+| `apps/server/src/sessions/session-manager.ts` | `createSessionManager()`: worktree + PTY spawn, per-session hook token (`verifyHookToken`), launch files in `sessions/<id>/`, headless xterm with `snapshot()` (its query replies discarded), batched `onOutput`, `write`, `resize`, `stop` (Ctrl-C, grace, tree kill) and `kill`; `session.started`/`ended`/`crashed` events | 2.6 |
+| `apps/server/src/sessions/binary.ts`, `tree-kill.ts` | What actually runs for a resolved binary (a `.cmd` shim's real target, or a refusal); killing a process tree (`taskkill /T`, or the process group) | 2.6 |
+| `apps/server/src/sessions/preflight.ts` | `runPreflight()`: PATH lookup plus version command per provider | 2.6 |
 | `apps/server/src/worktrees/git.ts`, `config/git-env.ts` | `runGit()`: the only way the server runs git (argv only, fsmonitor off, hooks path on the null device, inherited `GIT_*` dropped) | 2.5 |
 | `apps/server/src/worktrees/worktree-manager.ts` | `createWorktreeManager({ home })`: `create` (`<home>/worktrees/<repo-slug>/<ULID>` on `micro-minds/<id>`), `list`, `isDirty`, and `remove` (registered, real-path checked, not locked, untracked links unlinked first and restored on failure, `git worktree remove` only, dirty needs `confirm`; the branch is kept) | 2.5 |
 | `fixtures/fake/` | Fake-provider scenarios (`basic`, `subagent`) | 2.4 |

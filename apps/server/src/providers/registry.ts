@@ -102,7 +102,7 @@ function windowsPathEntry(entry: string): string {
  * spawn (task 2.6) runs the shim's real target (`node <cli.js>`, or a native `.exe`) instead, or
  * refuses to start and says why. It never passes arguments through cmd.exe.
  */
-function resolveCommand(command: string, lookup: BinaryLookup): BinaryResolution {
+export function resolveCommand(command: string, lookup: BinaryLookup): BinaryResolution {
   if (!BARE_COMMAND.test(command)) return { ok: false, reason: 'not_found' };
   const windows = lookup.platform === 'win32';
   const paths = windows ? path.win32 : path.posix;
