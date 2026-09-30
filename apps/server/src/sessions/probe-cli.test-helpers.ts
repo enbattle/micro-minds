@@ -9,6 +9,7 @@
 // MM_TEST_* env vars, the terminal size) and `<reportPath>.size.json` on every resize, puts stdin
 // in raw mode (so Ctrl-C arrives as the byte 0x03, on Windows too), appends every input chunk to
 // `<reportPath>.input`, ignores SIGINT, and exits with code N on the input `exit N` + Enter.
+// `<reportPath>` is written last, once raw mode is on: its existence means "ready for input".
 // With `--spawn-child` it first starts a child (`--child`) that ignores SIGHUP and SIGINT, writes
 // `{ pid }` to `<reportPath>.child.json` and stays alive until it is killed.
 //
@@ -67,7 +68,6 @@ function runMain(reportPath: string, args: string[]): void {
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined && /^(MICROMINDS_|MM_TEST_)/i.test(key)) env[key] = value;
   }
-  writeJson(reportPath, { pid: process.pid, argv: args, cwd: process.cwd(), env, ...size() });
   process.stdout.on('resize', () => writeJson(`${reportPath}.size.json`, size()));
 
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
@@ -76,10 +76,15 @@ function runMain(reportPath: string, args: string[]): void {
   process.stdin.on('data', (chunk: string) => {
     fs.appendFileSync(`${reportPath}.input`, chunk);
     received += chunk;
-    const match = /exit (\d+)\r/.exec(received);
+    // Enter is `\r` in raw mode; `\n` too, in case a tty still translates it (ICRNL).
+    const match = /exit (\d+)[\r\n]/.exec(received);
     if (match !== null) process.exit(Number(match[1]));
   });
   process.stdin.on('end', () => process.exit(0));
+  // The report is the readiness signal: it is written only after raw mode is on and the input
+  // listener is attached, so input a test sends once the report exists is read raw (a canonical
+  // tty would turn `\r` into `\n` and Ctrl-C into SIGINT instead of the byte 0x03).
+  writeJson(reportPath, { pid: process.pid, argv: args, cwd: process.cwd(), env, ...size() });
   process.stdout.write('probe ready\r\n');
 }
 
