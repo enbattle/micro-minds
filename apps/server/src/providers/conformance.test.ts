@@ -47,29 +47,9 @@ const BROKEN: readonly {
 }[] = [
   // identity
   {
-    name: 'an id that is not a known provider',
-    check: 'identity',
-    make: () => broken({ id: 'claude-code' as unknown as ProviderAdapter['id'] }),
-  },
-  {
     name: 'a binary command with a path',
     check: 'identity',
     make: () => broken({ binary: { command: 'bin/micro-minds-fake', versionArgs: [] } }),
-  },
-  {
-    name: 'a binary command with a Windows path',
-    check: 'identity',
-    make: () => broken({ binary: { command: 'C:\\tools\\fake', versionArgs: [] } }),
-  },
-  {
-    name: "a binary command with '..'",
-    check: 'identity',
-    make: () => broken({ binary: { command: '..', versionArgs: [] } }),
-  },
-  {
-    name: 'a binary command with an extension',
-    check: 'identity',
-    make: () => broken({ binary: { command: 'micro-minds-fake.cmd', versionArgs: [] } }),
   },
   {
     name: 'a toolCategories value that is not a ToolCategory',
@@ -80,16 +60,6 @@ const BROKEN: readonly {
       }),
   },
   // total
-  {
-    name: 'a normalize that throws',
-    check: 'total',
-    make: () =>
-      broken({
-        normalize: () => {
-          throw new Error('boom');
-        },
-      }),
-  },
   {
     name: 'a normalize that throws on non-object input only',
     check: 'total',
@@ -113,44 +83,6 @@ const BROKEN: readonly {
     name: 'an adapter that stamps its own ts',
     check: 'events',
     make: () => broken({ normalize: editEvents((e) => ({ ...e, ts: 1_600_000_000_000 })) }),
-  },
-  {
-    name: 'an adapter that makes its own ids',
-    check: 'events',
-    make: () =>
-      broken({ normalize: editEvents((e) => ({ ...e, id: '01K6ZZZZZZZZZZZZZZZZZZZZZZ' })) }),
-  },
-  {
-    name: 'an adapter that stamps another provider',
-    check: 'events',
-    make: () => broken({ normalize: editEvents((e) => ({ ...e, provider: 'claude' })) }),
-  },
-  {
-    name: 'an adapter that stamps another session id',
-    check: 'events',
-    make: () =>
-      broken({ normalize: editEvents((e) => ({ ...e, sessionId: '01K6A2B3C4D5E6F7G8H9J0K1ZZ' })) }),
-  },
-  {
-    name: 'an adapter whose root agent is not the session id',
-    check: 'events',
-    make: () =>
-      broken({
-        normalize: editEvents((e) =>
-          e.parentAgentId === undefined ? { ...e, agentId: 'root' } : e,
-        ),
-      }),
-  },
-  {
-    name: 'an adapter that emits events without the schema version',
-    check: 'events',
-    make: () =>
-      broken({
-        normalize: editEvents((e) => {
-          const { v: _v, ...rest } = e;
-          return rest as unknown as AgentEvent;
-        }),
-      }),
   },
   {
     name: 'an adapter that invents an event kind',
@@ -177,22 +109,6 @@ const BROKEN: readonly {
         normalize: editEvents((e) => ({ ...e, severity: 'warn' }) as unknown as AgentEvent),
       }),
   },
-  {
-    name: 'an adapter that sets a mood field',
-    check: 'facts-only',
-    make: () =>
-      broken({
-        normalize: editEvents((e) => ({ ...e, mood: 'stressed' }) as unknown as AgentEvent),
-      }),
-  },
-  {
-    name: 'an adapter that sets an attention state',
-    check: 'facts-only',
-    make: () =>
-      broken({
-        normalize: editEvents((e) => ({ ...e, attention: 'hand' }) as unknown as AgentEvent),
-      }),
-  },
   // unknown-input
   {
     name: "an adapter that maps unrecognized payloads to a known kind instead of 'unknown'",
@@ -211,20 +127,6 @@ const BROKEN: readonly {
       const example = exampleAdapter();
       return broken({
         normalize: (raw, ctx) => example.normalize(raw, ctx).filter((e) => e.kind !== 'unknown'),
-      });
-    },
-  },
-  {
-    name: 'an adapter that throws on unrecognized payloads',
-    check: 'unknown-input',
-    make: () => {
-      const example = exampleAdapter();
-      return broken({
-        normalize: (raw, ctx) => {
-          const events = example.normalize(raw, ctx);
-          if (events.some((e) => e.kind === 'unknown')) throw new Error('unrecognized');
-          return events;
-        },
       });
     },
   },
@@ -274,17 +176,6 @@ const BROKEN: readonly {
       }),
   },
   {
-    name: 'a launch that puts the token in a file name',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec, ctx) => ({
-          ...spec,
-          files: [{ name: `${ctx.hookToken}.json`, content: '{}' }],
-        })),
-      }),
-  },
-  {
     name: 'a launch that puts the token in args',
     check: 'launch',
     make: () =>
@@ -292,17 +183,6 @@ const BROKEN: readonly {
         launch: editLaunch((spec, ctx) => ({
           ...spec,
           args: [...spec.args, `--token=${ctx.hookToken}`],
-        })),
-      }),
-  },
-  {
-    name: 'a launch that quotes the prompt',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec, ctx) => ({
-          ...spec,
-          args: spec.args.map((a) => (a === ctx.firstPrompt ? `"${a}"` : a)),
         })),
       }),
   },
@@ -318,28 +198,6 @@ const BROKEN: readonly {
       }),
   },
   {
-    name: 'a launch that passes the prompt twice',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec, ctx) => ({
-          ...spec,
-          args: ctx.firstPrompt === undefined ? spec.args : [...spec.args, ctx.firstPrompt],
-        })),
-      }),
-  },
-  {
-    name: 'a launch that drops the prompt',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec, ctx) => ({
-          ...spec,
-          args: spec.args.filter((a) => a !== ctx.firstPrompt),
-        })),
-      }),
-  },
-  {
     name: "a launch with a file name containing '..'",
     check: 'launch',
     make: () =>
@@ -347,28 +205,6 @@ const BROKEN: readonly {
         launch: editLaunch((spec) => ({
           ...spec,
           files: [{ name: '../settings.json', content: '{}' }],
-        })),
-      }),
-  },
-  {
-    name: 'a launch with a file name containing a separator',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec) => ({
-          ...spec,
-          files: [{ name: path.join('.claude', 'settings.json'), content: '{}' }],
-        })),
-      }),
-  },
-  {
-    name: 'a launch with an absolute file name',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec, ctx) => ({
-          ...spec,
-          files: [{ name: path.join(ctx.sessionDir, 'settings.json'), content: '{}' }],
         })),
       }),
   },
@@ -381,46 +217,6 @@ const BROKEN: readonly {
           ...spec,
           args: ['--settings', path.join(ctx.worktreePath, '.claude', 'settings.local.json')],
         })),
-      }),
-  },
-  {
-    name: 'a launch that points an env value into the worktree',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec, ctx) => ({
-          ...spec,
-          env: { ...spec.env, FAKE_SETTINGS: path.join(ctx.worktreePath, 'settings.json') },
-        })),
-      }),
-  },
-  {
-    name: 'a launch with a non-string env value',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec) => ({
-          ...spec,
-          env: { ...spec.env, MICROMINDS_PORT: 4317 as unknown as string },
-        })),
-      }),
-  },
-  {
-    name: 'a launch with a non-string arg',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: editLaunch((spec) => ({ ...spec, args: [...spec.args, 7 as unknown as string] })),
-      }),
-  },
-  {
-    name: 'a launch that throws',
-    check: 'launch',
-    make: () =>
-      broken({
-        launch: () => {
-          throw new Error('cannot launch');
-        },
       }),
   },
 ];

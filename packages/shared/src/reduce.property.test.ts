@@ -12,6 +12,8 @@ import {
 } from './index.ts';
 import { GHOST, MIN, ROOT, run, SESSION_ID, SUB, T0 } from './shared.test-helpers.ts';
 
+/** A fixed seed, so every run draws the same cases (ADR 0031). */
+const PROPERTY_SEED = 20_260_929;
 const AGENT_IDS = [ROOT, SUB, GHOST] as const;
 const TOOL_NAMES = ['Bash', 'Read', 'Edit', 'Agent', 'WebFetch', 'mcp__x__y'] as const;
 const MODELS = ['claude-opus-5-5', 'claude-haiku-4-5-20251001'] as const;
@@ -168,7 +170,7 @@ describe('reduce() properties (fast-check)', () => {
         }
         expect(world).toBeDefined();
       }),
-      { numRuns: 300 },
+      { seed: PROPERTY_SEED, numRuns: 300 },
     );
   });
 
@@ -177,7 +179,7 @@ describe('reduce() properties (fast-check)', () => {
       fc.property(anyEventsArb, (events) => {
         expect(() => run(events)).not.toThrow();
       }),
-      { numRuns: 200 },
+      { seed: PROPERTY_SEED, numRuns: 200 },
     );
   });
 
@@ -191,7 +193,7 @@ describe('reduce() properties (fast-check)', () => {
           world = next;
         }
       }),
-      { numRuns: 300 },
+      { seed: PROPERTY_SEED, numRuns: 300 },
     );
   });
 
@@ -203,7 +205,7 @@ describe('reduce() properties (fast-check)', () => {
         const second = run([...prelude, ...events]);
         expect(second).toEqual(first);
       }),
-      { numRuns: 200 },
+      { seed: PROPERTY_SEED, numRuns: 200 },
     );
   });
 });

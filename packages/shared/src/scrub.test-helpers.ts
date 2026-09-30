@@ -1,5 +1,6 @@
-// Shared generators for the scrubber tests (task 2.2). Test-only: this file may use node: modules;
-// the package source may not (packages/shared/CLAUDE.md).
+// Shared generators for the scrubber tests (scrub.test.ts, scrub.property.test.ts,
+// scrub.performance.test.ts). Test-only: this file may use node: modules; the package source may
+// not (packages/shared/CLAUDE.md).
 //
 // Every secret is built at runtime from a seeded PRNG. That keeps token-shaped literals out of the
 // repo (secret scanners and push protection) and makes each sample random-looking, the way real
@@ -10,11 +11,23 @@ import fc from 'fast-check';
 export const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 export const LOWER = 'abcdefghijklmnopqrstuvwxyz';
 export const DIGITS = '0123456789';
+export const LETTERS = `${UPPER}${LOWER}`;
 export const ALNUM = `${UPPER}${LOWER}${DIGITS}`;
+export const LOWER_ALNUM = `${LOWER}${DIGITS}`;
 export const BASE64URL = `${ALNUM}-_`;
 export const BASE64 = `${ALNUM}+/`;
 export const HEX = '0123456789abcdef';
 export const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+/** RFC 4648 base32 alphabet (TOTP seeds and similar): A–Z and 2–7. */
+export const BASE32 = `${UPPER}234567`;
+
+/** Lower-case letters that are not hex digits, so a token can never read as a hex hash. */
+const LOWER_NOT_HEX = 'ghijklmnopqrstuvwxyz';
+/** Upper-case letters that are not hex digits, so a token can never read as a hex hash. */
+const UPPER_NOT_HEX = 'GHIJKLMNOPQRSTUVWXYZ';
+
+/** The seeds the example tables use for generated values. */
+export const SEEDS = [1, 2, 3, 20_260_928] as const;
 
 /** mulberry32: a tiny deterministic PRNG, so a fast-check seed maps to one random-looking token. */
 export function prng(seed: number): () => number {
@@ -42,6 +55,10 @@ function pick<T>(next: () => number, items: readonly [T, ...T[]]): T {
   return items[Math.floor(next() * items.length)] ?? items[0];
 }
 
+// ---------------------------------------------------------------------------------------------
+// Random values with no known prefix.
+// ---------------------------------------------------------------------------------------------
+
 /** A long token with upper case, lower case and digits mixed, matching no known prefix. */
 export function highEntropyToken(seed: number, length = 40, alphabet = ALNUM): string {
   const next = prng(seed);
@@ -52,6 +69,59 @@ export function highEntropyToken(seed: number, length = 40, alphabet = ALNUM): s
     chars(next, length - 3, alphabet)
   );
 }
+
+/** A random token with no digit at all: one upper, one lower, then `length - 2` from `alphabet`. */
+export function digitFreeToken(seed: number, length: number, alphabet: string): string {
+  const next = prng(seed);
+  return chars(next, 1, UPPER) + chars(next, 1, LOWER) + chars(next, length - 2, alphabet);
+}
+
+/**
+ * A random lower-case alphanumeric token of `length` characters. It holds at least one letter
+ * outside a–f and at least one digit, then random characters from a–z and 0–9.
+ */
+export function lowerToken(seed: number, length: number): string {
+  const next = prng(seed);
+  return (
+    chars(next, 1, LOWER_NOT_HEX) + chars(next, 1, DIGITS) + chars(next, length - 2, LOWER_ALNUM)
+  );
+}
+
+/**
+ * A random upper-case base32 token of `length` characters (A–Z, 2–7). It holds at least one letter
+ * outside A–F and at least one digit, then random base32 characters.
+ */
+export function base32Token(seed: number, length: number): string {
+  const next = prng(seed);
+  return chars(next, 1, UPPER_NOT_HEX) + chars(next, 1, '234567') + chars(next, length - 2, BASE32);
+}
+
+/** A random lower-case hex string (a SHA-1 or SHA-256 hash when 40 or 64 long). */
+export function hexString(seed: number, length: number): string {
+  return chars(prng(seed), length, HEX);
+}
+
+/** A ULID-shaped id: a time part then random Crockford base32. */
+export function ulid(seed: number): string {
+  const next = prng(seed);
+  return `0${chars(next, 1, '1234567')}${chars(next, 24, CROCKFORD)}`;
+}
+
+/** A lower-case UUID-shaped id. */
+export function uuid(seed: number): string {
+  const next = prng(seed);
+  return [8, 4, 4, 4, 12].map((length) => chars(next, length, HEX)).join('-');
+}
+
+/** A password-like value: mixed case, digits and URL-safe punctuation. */
+export function password(seed: number): string {
+  const next = prng(seed);
+  return `${chars(next, 1, 'ABCDEFGH')}${chars(next, 1, 'stuvwxyz')}${chars(next, 1, '23456789')}${chars(next, 11, `${ALNUM}-._~!*`)}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Known secret shapes.
+// ---------------------------------------------------------------------------------------------
 
 export interface SecretSample {
   /** The full secret as it appears in text. */
@@ -135,8 +205,20 @@ function anthropic(seed: number): SecretSample {
   return { secret: `sk-ant-api03-${core}AA`, core };
 }
 
-/** The known secret shapes of clause 1, plus the high-entropy case of clause 4. */
-export const KNOWN_SHAPES: readonly SecretShape[] = [
+/** Sourcegraph's long form: `sgp_` + 16 hex + `_` + 40 hex. Both hex parts are random. */
+function sourcegraphLong(seed: number): SecretSample {
+  const next = prng(seed);
+  const first = chars(next, 16, HEX);
+  const second = chars(next, 40, HEX);
+  return { secret: `sgp_${first}_${second}`, core: `${first}_${second}` };
+}
+
+/**
+ * Every known secret shape. Many are shorter than the 40-character long-run threshold, or made of
+ * hex joined to a label (which the long-run pass takes for a name like `worktree-<sha>`), so only
+ * a known-prefix rule catches them.
+ */
+export const SECRET_SHAPES: readonly SecretShape[] = [
   { name: 'Anthropic API key (sk-ant-api03-…)', make: anthropic },
   { name: 'OpenAI key (sk-… legacy)', make: prefixed('sk-', 48, ALNUM) },
   { name: 'OpenAI project key (sk-proj-…)', make: prefixed('sk-proj-', 156, BASE64URL) },
@@ -155,8 +237,27 @@ export const KNOWN_SHAPES: readonly SecretShape[] = [
   { name: 'PEM EC private key', make: pem('EC PRIVATE KEY', '\n') },
   { name: 'PEM OpenSSH private key', make: pem('OPENSSH PRIVATE KEY', '\n') },
   { name: 'PEM private key with CRLF line endings', make: pem('PRIVATE KEY', '\r\n') },
+  { name: 'Stripe live secret key (sk_live_)', make: prefixed('sk_live_', 24, ALNUM) },
+  { name: 'Stripe test secret key (sk_test_)', make: prefixed('sk_test_', 24, ALNUM) },
+  { name: 'Stripe live restricted key (rk_live_)', make: prefixed('rk_live_', 24, ALNUM) },
+  { name: 'Stripe live secret key, long form (sk_live_)', make: prefixed('sk_live_', 99, ALNUM) },
+  { name: 'GitLab personal access token (glpat-)', make: prefixed('glpat-', 20, BASE64URL) },
+  { name: 'Hugging Face token (hf_)', make: prefixed('hf_', 34, LETTERS) },
+  { name: 'Twilio API key (SK + 32 hex)', make: prefixed('SK', 32, HEX) },
+  { name: 'npm token (npm_)', make: prefixed('npm_', 36, ALNUM) },
+  { name: 'DigitalOcean token (dop_v1_)', make: prefixed('dop_v1_', 64, HEX) },
+  { name: 'Pulumi token (pul- + 40 hex)', make: prefixed('pul-', 40, HEX) },
+  { name: 'Buildkite token (bkua_ + 40 hex)', make: prefixed('bkua_', 40, HEX) },
+  { name: 'RubyGems key (rubygems_ + 48 hex)', make: prefixed('rubygems_', 48, HEX) },
+  { name: 'Shippo live token (shippo_live_ + 40 hex)', make: prefixed('shippo_live_', 40, HEX) },
+  { name: 'Shippo test token (shippo_test_ + 40 hex)', make: prefixed('shippo_test_', 40, HEX) },
+  { name: 'Sourcegraph token (sgp_ + 40 hex)', make: prefixed('sgp_', 40, HEX) },
+  { name: 'Sourcegraph token (sgp_ + 16 hex + _ + 40 hex)', make: sourcegraphLong },
+  { name: 'Lob live key (live_ + 35 hex)', make: prefixed('live_', 35, HEX) },
+  { name: 'Lob test key (test_ + 35 hex)', make: prefixed('test_', 35, HEX) },
 ];
 
+/** A long mixed-case token with no known prefix: only the long-run rule catches it. */
 export const HIGH_ENTROPY_SHAPE: SecretShape = {
   name: 'high-entropy token (no known prefix)',
   make: (seed) => {
@@ -166,8 +267,15 @@ export const HIGH_ENTROPY_SHAPE: SecretShape = {
   },
 };
 
+/** One sample of the shape whose name starts with `shapeName`. */
+export function sampleSecret(shapeName: string, seed = 7): string {
+  const shape = SECRET_SHAPES.find((candidate) => candidate.name.startsWith(shapeName));
+  if (shape === undefined) throw new Error(`no shape ${shapeName}`);
+  return shape.make(seed).secret;
+}
+
 // ---------------------------------------------------------------------------------------------
-// Ordinary text: the negative shapes of clause 6.
+// Ordinary text: the negative shapes.
 // ---------------------------------------------------------------------------------------------
 
 const WORDS = [
@@ -311,7 +419,7 @@ export const SOURCE_LINES = [
   '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"npm test"}}',
 ] as const;
 
-/** Non-secret `KEY=value` lines (clause 6). */
+/** Non-secret `KEY=value` lines. */
 export const PLAIN_ENV_LINES = [
   'NODE_ENV=production',
   'PORT=3000',
@@ -326,17 +434,17 @@ export const PLAIN_ENV_LINES = [
 const wordArb = fc.constantFrom(...WORDS);
 
 const hexArb = (length: number): fc.Arbitrary<string> =>
-  fc.integer().map((seed) => chars(prng(seed), length, HEX));
+  fc.integer().map((seed) => hexString(seed, length));
 
 /** ULIDs look random: 10 time chars then 16 random Crockford base32 chars. */
-export const ulidArb: fc.Arbitrary<string> = fc.integer().map((seed) => {
+const ulidArb: fc.Arbitrary<string> = fc.integer().map((seed) => {
   const next = prng(seed);
   return `0${chars(next, 1, '1234567')}${chars(next, 8, CROCKFORD)}${chars(next, 16, CROCKFORD)}`;
 });
 
 const uuidArb = fc.oneof(
   fc.uuid(),
-  fc.uuid().map((uuid) => uuid.toUpperCase()),
+  fc.uuid().map((id) => id.toUpperCase()),
 );
 
 const numberArb = fc.oneof(
@@ -395,7 +503,7 @@ const pieceArb: fc.Arbitrary<string> = fc.oneof(
   },
 );
 
-/** Generated ordinary text built only from the negative shapes of clause 6. May be empty. */
+/** Generated ordinary text built only from the negative shapes. May be empty. */
 export const ordinaryTextArb: fc.Arbitrary<string> = fc
   .array(fc.tuple(pieceArb, fc.constantFrom(' ', ' ', ' ', '\n', ', ', '; ')), { maxLength: 25 })
   .map((parts) => parts.map(([piece, sep], i) => (i === 0 ? piece : `${sep}${piece}`)).join(''));
@@ -411,28 +519,162 @@ export const WRAPPERS: readonly (readonly [string, string])[] = [
   [': ', '.'],
 ];
 
-// ---------------------------------------------------------------------------------------------
-// Revision of 2.2 (reviewer and security findings): more known key shapes, all shorter than the
-// 40-character high-entropy threshold or made of hex, so only a known-prefix rule catches them.
-// ---------------------------------------------------------------------------------------------
-
-export const LETTERS = `${UPPER}${LOWER}`;
-
-/** Known key shapes added in the 2.2 revision (Stripe, GitLab, Hugging Face, Twilio, npm, DO). */
-export const MORE_KNOWN_SHAPES: readonly SecretShape[] = [
-  { name: 'Stripe live secret key (sk_live_)', make: prefixed('sk_live_', 24, ALNUM) },
-  { name: 'Stripe test secret key (sk_test_)', make: prefixed('sk_test_', 24, ALNUM) },
-  { name: 'Stripe live restricted key (rk_live_)', make: prefixed('rk_live_', 24, ALNUM) },
-  { name: 'Stripe live secret key, long form (sk_live_)', make: prefixed('sk_live_', 99, ALNUM) },
-  { name: 'GitLab personal access token (glpat-)', make: prefixed('glpat-', 20, BASE64URL) },
-  { name: 'Hugging Face token (hf_)', make: prefixed('hf_', 34, LETTERS) },
-  { name: 'Twilio API key (SK + 32 hex)', make: prefixed('SK', 32, HEX) },
-  { name: 'npm token (npm_)', make: prefixed('npm_', 36, ALNUM) },
-  { name: 'DigitalOcean token (dop_v1_)', make: prefixed('dop_v1_', 64, HEX) },
-];
-
-/** A random token with no digit at all: one upper, one lower, then `length - 2` from `alphabet`. */
-export function digitFreeToken(seed: number, length: number, alphabet: string): string {
-  const next = prng(seed);
-  return chars(next, 1, UPPER) + chars(next, 1, LOWER) + chars(next, length - 2, alphabet);
+/** Ordinary text before and after a value, and how the value is wrapped. */
+export interface Embedding {
+  before: string;
+  after: string;
+  wrap: readonly [string, string];
+  sepBefore: string;
+  sepAfter: string;
 }
+
+export const embeddingArb: fc.Arbitrary<Embedding> = fc.record({
+  before: ordinaryTextArb,
+  after: ordinaryTextArb,
+  wrap: fc.constantFrom(...WRAPPERS),
+  sepBefore: fc.constantFrom(' ', '\n'),
+  sepAfter: fc.constantFrom(' ', '\n'),
+});
+
+/** The text around an embedded value: `${head}${value}${tail}`. */
+export function surround({ before, after, wrap, sepBefore, sepAfter }: Embedding): {
+  head: string;
+  tail: string;
+} {
+  return {
+    head: `${before === '' ? '' : `${before}${sepBefore}`}${wrap[0]}`,
+    tail: `${wrap[1]}${after === '' ? '' : `${sepAfter}${after}`}`,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Long single-case names made of words.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Ordinary English words found in identifiers. None names a secret (no key, token, secret, pass,
+ * password, pwd, credential, dsn), so a name built from them is never a secret-named key.
+ */
+export const NAME_WORDS = [
+  'micro',
+  'minds',
+  'server',
+  'core',
+  'integration',
+  'tests',
+  'runner',
+  'agent',
+  'agents',
+  'session',
+  'sessions',
+  'worktree',
+  'reducer',
+  'health',
+  'mood',
+  'idle',
+  'working',
+  'status',
+  'board',
+  'terminal',
+  'provider',
+  'adapter',
+  'fixture',
+  'replay',
+  'snapshot',
+  'event',
+  'events',
+  'hook',
+  'relay',
+  'config',
+  'loader',
+  'parser',
+  'schema',
+  'render',
+  'scene',
+  'character',
+  'update',
+  'handler',
+  'manager',
+  'builder',
+  'factory',
+  'helper',
+  'module',
+  'package',
+  'shared',
+  'client',
+  'request',
+  'response',
+  'timeout',
+  'retry',
+  'queue',
+  'worker',
+  'cache',
+  'store',
+  'layout',
+  'panel',
+  'button',
+  'dialog',
+  'window',
+  'theme',
+  'color',
+  'label',
+  'title',
+  'header',
+  'footer',
+  'content',
+  'message',
+  'history',
+  'search',
+  'filter',
+  'sorted',
+  'result',
+  'output',
+  'input',
+  'format',
+  'string',
+  'number',
+  'value',
+  'record',
+  'entry',
+  'maximum',
+  'minimum',
+  'concurrent',
+  'workspace',
+  'default',
+  'enabled',
+  'per',
+  'for',
+  'the',
+  'and',
+  'max',
+  'new',
+  'to',
+  'of',
+] as const;
+
+/** Words joined by `sep` until the name is at least `minLength` characters long. */
+function joinWords(words: readonly string[], sep: string, minLength: number): string {
+  let name = '';
+  for (const word of words) {
+    name = name === '' ? word : `${name}${sep}${word}`;
+    if (name.length >= minLength) break;
+  }
+  return name;
+}
+
+const wordsArb = fc.array(fc.constantFrom(...NAME_WORDS), { minLength: 24, maxLength: 24 });
+
+/** A long lower-case kebab-case name made of words, 40 characters or more. */
+export const kebabNameArb: fc.Arbitrary<string> = wordsArb.map((words) =>
+  joinWords(words, '-', 40),
+);
+
+/** A long lower-case snake_case name made of words, 40 characters or more. */
+export const snakeNameArb: fc.Arbitrary<string> = wordsArb.map((words) =>
+  joinWords(words, '_', 40),
+);
+
+/** A long upper-case constant name made of words joined by `_`, 40 characters or more. */
+export const constantNameArb: fc.Arbitrary<string> = wordsArb.map((words) =>
+  joinWords(words, '_', 40).toUpperCase(),
+);

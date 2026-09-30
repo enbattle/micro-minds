@@ -379,6 +379,91 @@ describe('claudeAdapter.normalize: event mapping (D4)', () => {
     });
   });
 
+  describe('cut text and summaries: scrubbed before the cut, never split a surrogate pair', () => {
+    // Secrets the scrubber knows, assembled at runtime so no literal key sits in the repo.
+    const GITHUB_TOKEN = ['ghp', 'aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dF2gH4'].join('_');
+    const ANTHROPIC_KEY = ['sk', 'ant', 'api03', 'Zx9Qw3Er5Ty7Ui1Op2As4Df6Gh8Jk0LmNbVcXz'].join(
+      '-',
+    );
+
+    const CONTEXTS = [
+      {
+        name: 'a Bash summary (cut at 120)',
+        max: 120,
+        cut: (source: string) =>
+          single(
+            hook('PreToolUse', {
+              tool_name: 'Bash',
+              tool_input: { command: source },
+              tool_use_id: 't',
+            }),
+          ).tool?.summary ?? '',
+      },
+      {
+        name: 'a UserPromptSubmit prompt (cut at 200)',
+        max: 200,
+        cut: (source: string) => single(hook('UserPromptSubmit', { prompt: source })).text ?? '',
+      },
+    ];
+
+    const straddling = CONTEXTS.flatMap((context) =>
+      [
+        { secretName: 'a GitHub token', secret: GITHUB_TOKEN },
+        { secretName: 'an Anthropic key', secret: ANTHROPIC_KEY },
+      ].map((row) => ({ ...context, ...row })),
+    );
+
+    it.each(straddling)(
+      '$secretName straddling the cut of $name leaves no prefix of it',
+      ({ max, cut, secret }) => {
+        // Ten characters before the cut point, so a cut-then-scrub would keep nine of the secret.
+        const filler = 'x '.repeat((max - 10) / 2);
+        const source = `${filler}${secret} and more words after it`;
+        expect(Array.from(source).length).toBeGreaterThan(max);
+        expect(source.slice(0, max - 1)).toContain(secret.slice(0, 8));
+        const out = cut(source);
+        for (let k = 4; k <= secret.length; k++) {
+          expect(out).not.toContain(secret.slice(0, k));
+        }
+      },
+    );
+
+    /** A high surrogate not followed by a low one, or a low one not preceded by a high one. */
+    const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    const EMOJI = '\u{1F600}';
+
+    // The cut keeps max - 1 code points; the emoji sits just inside, on, or just past that edge.
+    const atBoundary = CONTEXTS.flatMap((context) =>
+      [context.max - 3, context.max - 2, context.max - 1].map((position) => ({
+        ...context,
+        position,
+      })),
+    );
+
+    it.each(atBoundary)(
+      'an emoji at code point $position of $name is kept whole or dropped whole',
+      ({ max, cut, position }) => {
+        const source = `${'c'.repeat(position)}${EMOJI}${'d'.repeat(40)}`;
+        const out = cut(source);
+        expect(out).not.toMatch(LONE_SURROGATE);
+        expect(out).toBe(
+          `${Array.from(source)
+            .slice(0, max - 1)
+            .join('')}…`,
+        );
+      },
+    );
+
+    it.each(CONTEXTS)(
+      'a run of emoji in $name is cut by code points, not halves',
+      ({ max, cut }) => {
+        const out = cut(EMOJI.repeat(max + 20));
+        expect(out).not.toMatch(LONE_SURROGATE);
+        expect(out).toBe(`${EMOJI.repeat(max - 1)}…`);
+      },
+    );
+  });
+
   describe('tool events', () => {
     it.each([
       { hookName: 'PreToolUse', kind: 'tool.started' },
