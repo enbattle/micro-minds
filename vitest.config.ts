@@ -29,8 +29,10 @@ export default defineConfig({
       thresholds: {
         'packages/shared/src/**': { lines: 95, functions: 95, statements: 95, branches: 90 },
         // Task 2.6. The fake CLI (providers/fake/cli.ts and its config) runs only as a child
-        // process in its tests, so v8 counts it as uncovered; the thresholds allow for it.
-        'apps/server/src/**': { lines: 85, functions: 88, statements: 85, branches: 80 },
+        // process in its tests, so v8 counts it as uncovered; the thresholds allow for it. Set
+        // from the CI coverage run (Ubuntu), where the Windows-only tests (.cmd shims, taskkill)
+        // are skipped.
+        'apps/server/src/**': { lines: 85, functions: 86, statements: 82, branches: 80 },
         // Hook entry points (stdin → main) are marked `v8 ignore`: they run only in the subprocess
         // tests in evals/harness/guard, which v8 can't instrument. The logic is unit-tested.
         '.claude/hooks/**': {

@@ -25,7 +25,7 @@ in PRs, with no automated check).
 | Practice | Enforced by | Status |
 |---|---|---|
 | Tests first for every code change, fixture-driven where fixtures exist (who writes them and the lock: see the ADR 0028 rows below) | reviewer `TEST-missing`, `TEST-no-fixture`, `TEST-criteria`; `/finish-task` | Convention |
-| Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `apps/server` 85% lines and statements, 88% functions, 80% branches (the fake CLI runs only as a subprocess); `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
+| Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `apps/server` 85% lines, 82% statements, 86% functions, 80% branches, as measured on Ubuntu (the fake CLI runs only as a subprocess; the Windows-only tests skip there); `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
 | Coverage thresholds for `packages/hook-relay` | Added with its first real code | Scheduled: `packages/hook-relay` when Phase 5 builds the relay (D29) |
 | Coverage thresholds for `apps/web` | Added with the web shell | Scheduled: 3.1 |
 | Property-based tests for the reducer and scrubber, each with a fixed seed so a run is reproducible | fast-check suites (`packages/shared/src/reduce.property.test.ts`, `scrub.property.test.ts`); `test-writer` instructions (ADR 0031) | Enforced (suites); convention (seeds) |
