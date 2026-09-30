@@ -126,6 +126,8 @@ Before a phase is marked complete (docs/PLAN.md §14):
 2. Add a row to the baseline history below, with the exact model ID and Claude Code version the
    runner prints.
 3. Any false positive triage confirmed during the phase has its clean case or `mustNotFind` entry.
+4. Ten minutes on the "Harness friction" list in `docs/backlog.md`: each entry becomes a fix, an
+   eval case, an accepted cost, or stays.
 
 ## Baseline history
 

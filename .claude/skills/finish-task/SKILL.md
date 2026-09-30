@@ -62,6 +62,7 @@ You implemented this change, so you don't review it, and you don't brief the rev
 
 1. **Snapshot the repository** for step 4.4: `git rev-parse HEAD`, `git status --porcelain -uall`, `git diff --cached | git hash-object --stdin`, `git for-each-ref | git hash-object --stdin` (branches and tags) and `git config --local --list | git hash-object --stdin`. Keep the five outputs.
 2. **Security due?** Yes if `docs/security/threat-model.md` has a row naming this task (`planned: task <id>` or `tasks …, <id>`). The security checks then run in the same review.
+   **Large change?** Above about 1,500 changed lines (`git diff --cached <BASE> --shortstat`), run the review as two or three reviewers in parallel, each given the same prompt plus its paths (for example product code, tests, harness and docs). One reviewer on a very large diff can stall. Together they are one round.
 3. **Invoke the `reviewer` subagent** (never a fork) once, with exactly this prompt and nothing else. No summary of the change, no claim that checks pass, no rationale:
 
    ```
@@ -130,67 +131,6 @@ Write the pull request body to a file **outside the working tree** (as in step 7
 2. If the branch has no pull request yet (`gh pr view <branch>` fails), create it as a draft, so CI runs on every task: `gh pr create --draft --base main --head <branch> --title "<title>" --body-file "<path>"`, with the phase body below. The CI title lint needs a Conventional Commit, so build the title yourself: type `feat`, unless every task in the phase has the same other type (for example all `docs`); no scope; then the phase title **lowercased**, without parentheticals or markers such as `← MVP complete`, then `(phase <n>)`. For example `feat: claude protocol spike (phase 1)` or `feat: server core (phase 2)`. Check it before creating the PR with `npm run lint:title -- "<title>"`. Otherwise append this task's section to the body: `gh pr view <branch> --json body --jq .body` into the file, add the section, then `gh pr edit <branch> --body-file "<path>"`.
 3. `gh pr checks <branch> --watch`, handled as for a task branch.
 
-**Task pull request body** (ends with the PR attribution line your harness instructions give, if any):
-
-```markdown
-## Summary
-- <what changed, one bullet per area>
-
-Task <id> (docs/PLAN.md §10).
-
-## Test plan
-- [x] `npm run check`
-- [x] `npm run test:coverage` (or: not needed, <why>)
-- [x] Tests by the test writer, locked in <sha> (`npm run tests:locked -- <id>`: pass) (or: not a code task)
-- [x] Eval cases: <new cases and result, or "none triggered">
-- [ ] CI green on ubuntu, macos and windows
-- [ ] <any manual check from the task text or the phase's "Done when">
-
-## Review
-Verdict: <verdict>, <n> round(s); security checks: <yes/no>.
-
-| Finding | Severity | Outcome | Evidence |
-|---|---|---|---|
-| <ruleId: one line> | <severity> | fix / backlog / reject / user | <what was reproduced, or the cited doc> |
-
-Probed: <the reviewer's probed list, condensed>.
-
-## Docs
-- <standards, threat model, ADR, protocol doc changes, or "none">
-```
-
-**Phase pull request body:** a `## Phase <n>: <title>` heading with the phase's **Goal**, then one section per task, appended as each task finishes:
-
-```markdown
-### <id> `<sha>` <subject>
-- <what changed, one bullet per area>
-- Checks: check pass; tests locked in <sha> (or not a code task); coverage <pass / not needed>; eval cases <cases / none triggered>; review <verdict>, <n> round(s), security checks <yes/no>
-- Triage: <finding → outcome (evidence), one line each, or "no findings">
-- Probed: <the reviewer's probed list, condensed>
-- Manual: <checks the user still has to do, or "none">
-```
-
-`/run-phase` adds the phase gate and "Done when" sections at the end.
-
-**Task branch only**, end with:
-
-```
-## Task <id> ready: <subject>
-
-| Step | Result |
-|---|---|
-| 1 check | pass |
-| 2 coverage | pass / not needed (<why>) |
-| 3 eval cases | <new cases: pass / not run, or "none triggered"> |
-| 4 review | <verdict>, <n> round(s); <k> fixed, <b> backlog, <r> rejected; security checks <yes/no> |
-| 5 tick | [x] <id>; phase gate: n/a / pass (<baseline row>) |
-| 6 docs | <files changed> |
-| 7 commit | <sha> <subject>; lint:commits OK |
-| 8 PR | #<number> <url>; CI green |
-
-Review the pull request, then merge it yourself:
-
-gh pr merge <number> --merge --delete-branch
-```
+**Pull request bodies and the final report:** read [templates.md](templates.md) (the task body, the phase body, and the task-branch report), and use the one that fits. The body ends with the PR attribution line your harness instructions give, if any.
 
 Then **stop**.
