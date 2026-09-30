@@ -1,6 +1,6 @@
 ---
 name: run-phase
-description: Run every remaining task of one micro-minds PLAN phase in order on a single phase branch - brief and plan each task (start-task steps), have a fresh test-writer write and lock its failing tests, implement it, finish it with the full finish-task gates (independent adversarial review, a security pass where due), push, and keep one draft pull request for the phase with CI on every task. Stops only for steps the user must do or decide, then ends with a completeness audit, the phase gate, a report and the merge command. Never merges. User-invoked only; takes the phase id (1, 2, 3, 4a).
+description: Run every remaining task of one micro-minds PLAN phase in order on a single phase branch - brief and plan each task (start-task steps), have a fresh test-writer write and lock its failing tests, implement it, finish it with the finish-task gates (one independent adversarial review with security checks where due, findings triaged), push, and keep one draft pull request for the phase with CI on every task. Stops only for steps the user must do or decide, then ends with a completeness audit, the phase gate, a report and the merge command. Never merges. User-invoked only; takes the phase id (1, 2, 3, 4a).
 argument-hint: <phase>
 arguments: [phase]
 disable-model-invocation: true
@@ -9,7 +9,7 @@ allowed-tools: Read Grep Glob Edit Write Bash(git add *) Bash(git commit *) Bash
 
 # Run phase `$phase`
 
-Starting this skill is the user's approval, for this phase only, of: each task's plan without a per-task approval stop, a test commit and an implementation commit per task, pushes to the phase branch, a draft pull request, and the phase's token-spending eval runs (`--run-evals`: new reviewer eval cases and the phase gate). It is **not** approval to merge, to change a PLAN §2 decision or a hard rule, or to do anything the phase's own rules reserve for the user. The policy is ADR 0027 (pushing and merging) and ADR 0028 (tests and review); PLAN §14 still applies (one task at a time, in order).
+Starting this skill is the user's approval, for this phase only, of: each task's plan without a per-task approval stop, a test commit and an implementation commit per task, pushes to the phase branch, a draft pull request, and the phase's token-spending eval runs (`--run-evals`: eval cases a trigger adds, and the phase gate). It is **not** approval to merge, to change a PLAN §2 decision or a hard rule, or to do anything the phase's own rules reserve for the user. The policy is ADR 0027 (pushing and merging), ADR 0028 (tests and review) and ADR 0031 (triage, one round, evals from real misses); PLAN §14 still applies (one task at a time, in order).
 
 ## Git state (captured before you read this)
 
@@ -48,7 +48,7 @@ Stop the run, leave the tree clean (commit only finished tasks), and report wher
 
 - **A human step.** The task text or the phase's rules say the user does it (for example Phase 1's recorded scenarios, which the user runs), or it needs a manual check only a person can make (login, visual rendering), or it spends tokens outside the eval runs (such as headless `claude -p` recordings). First prepare everything the user needs, so their step is one command or one action, and say how to resume.
 - **A decision that's the user's.** The PLAN text is wrong, ambiguous or contradicts itself; the task would change a PLAN §2 decision, a hard rule or CLAUDE.md; a dependency or tool choice needs an ADR the plan doesn't already settle; or the task's preconditions (for example a task marked "Only if …") are unmet.
-- **Gates that won't pass.** Anything `/finish-task` stops on: a check, coverage or CI failure you can't fix within the task, a broken test lock, reviewer blockers after 2 rounds, a reviewer that changed the repository, or a reviewer finding you believe is a false positive.
+- **Gates that won't pass.** Anything `/finish-task` stops on: a check, coverage or CI failure you can't fix within the task, a broken test lock, blockers left after a second review round, a reviewer that changed the repository, a blocker you would reject or defer, or a test-writer interpretation that contradicts the repository.
 - **A second test dispute.** You believe a locked test is wrong after its one revision (`/start-task` step 6.6).
 - **Anything outside this approval.** Merging, force-pushing, deleting branches, worktrees or files you didn't create, touching global config, or anything else the harness denies. Don't look for another route.
 
@@ -59,7 +59,7 @@ Don't skip ahead to later tasks while one is blocked: PLAN §14.1 is in order.
 When the last task is ticked, `/finish-task` step 5.2 has already run the phase gate. Then:
 
 1. **Completeness audit** (ADR 0028). Each review checked one task; nothing yet checked that the whole phase was carried out. Invoke a fresh `general-purpose` agent (never a fork) with only: the phase's section of `docs/PLAN.md` (heading to the next phase heading), and the instruction to run `git diff origin/main...HEAD` and read what it needs. Nothing from this conversation. Ask it to return a table with one row per task clause and per **Done when** clause: the clause, the evidence (file and line, test name, or commit), and a status of implemented, deliberately changed (with whether the stated reason holds), partial, or missing. It must not edit anything; snapshot the repository around it as in `/finish-task` step 4.1.
-2. **Partial or missing rows:** if the fix is inside the phase's scope, make it as a **new unit of work** with the id `<id>-fix` (the task the row belongs to), never by reopening that task: its lock was checked while it was open, and later tasks' lock commits may since have changed the same tests. The unit's clauses are the audit rows it closes. For code, a fresh `test-writer` gets the task text and those rows (`/start-task` step 6 with id `<id>-fix`); then implement and run `/finish-task` steps 0.4–4, 7 and 8 (phase branch: push, update the pull request body, wait for CI) with id `<id>-fix`, where BASE is the parent of the unit's first `Test-infra: <id>-fix` or `Test-lock: <id>-fix` commit (or `HEAD` for docs only), as `/finish-task` defines it for a phase branch, and the commit subject is `fix(<scope>): <what> (<id>)`. The security pass (step 4.5) runs if it applies to `<id>`, not only when the threat model names `<id>-fix`. No PLAN tick (the task is already ticked). Every follow-up is pushed and green before step 4 below. One round, then report what's left. Outside scope: report it as unmet.
+2. **Partial or missing rows:** triage them as review findings are triaged (`/finish-task` step 4.5). A missing clause of this phase is a **fix**: make it as one follow-up with the id `<id>-fix` (never by reopening the task), with its tests from a fresh `test-writer` added to the existing test file (`/start-task` step 6.7), then `/finish-task` steps 0.4–4, 7 and 8 in phase-branch mode, with BASE the parent of its first `Test-infra: <id>-fix` or `Test-lock: <id>-fix` commit (or `HEAD` for docs only) and the subject `fix(<scope>): <what> (<id>)`. No PLAN tick. Anything else is **backlog** or **user**, as in triage. Every follow-up is pushed and green before step 4 below.
 3. Append to the pull request body: `## Completeness audit` (the table), `## Phase gate` (the baseline row and the eval result) and `## Done when`, with each clause of the phase's **Done when** marked met, unmet or needs manual check, with evidence.
 4. If every clause is met or only needs a manual check: `gh pr ready <branch>`, then `gh pr checks <branch> --watch` (gate on the exit code).
 5. Report, and **stop**:
@@ -67,9 +67,9 @@ When the last task is ticked, `/finish-task` step 5.2 has already run the phase 
 ```
 ## Phase <n> ready: <phase title>
 
-| Task | Tests locked | Commit | Reviewer | Security pass | Eval cases | CI |
-|---|---|---|---|---|---|---|
-| <id> | <sha or n/a> | <sha> <subject> | approve, <n> round(s) | <result or n/a> | <cases or none> | green |
+| Task | Tests locked | Commit | Review | Triage | CI |
+|---|---|---|---|---|---|
+| <id> | <sha or n/a> | <sha> <subject> | <verdict>, <n> round(s), security <yes/no> | <k> fixed, <b> backlog, <r> rejected | green |
 
 Completeness audit: <n> implemented, <deviations>, <partial/missing> · Phase gate: <pass, baseline row> · Done when: <met / unmet clauses> · Eval spend this phase: <runs>
 Manual checks left for you: <list, or "none">

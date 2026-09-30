@@ -1,6 +1,6 @@
 # 0028. Tests by a separate writer, locked; adversarial, independent review
 
-- Status: Accepted
+- Status: Accepted; amended by [0031](0031-proportionate-review-and-evals.md) (triage, one review round, security checks in the same review, evals from real misses)
 - Date: 2026-09-27
 - Plan: D28 (PLAN §2)
 

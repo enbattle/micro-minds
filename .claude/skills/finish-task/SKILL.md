@@ -1,6 +1,6 @@
 ---
 name: finish-task
-description: Finish the current micro-minds PLAN task - snapshot the change in the index, run npm run check and coverage, confirm the reviewer eval cases due with the task were added, get a reviewer subagent pass on the staged diff, tick the PLAN checkbox (with the phase gate if it's the phase's last task), update standards and threat-model statuses, make the Conventional Commit, push the branch, open or update the pull request and wait for CI. It never merges; it ends with the merge command for the user. User-invoked only (or followed by /run-phase), because it commits and pushes.
+description: Finish the current micro-minds PLAN task - snapshot the change in the index, run npm run check and coverage, get one adversarial reviewer pass on the staged diff and triage its findings (ADR 0031), tick the PLAN checkbox (with the phase gate if it's the phase's last task), update standards and threat-model statuses, make the Conventional Commit, push the branch, open or update the pull request and wait for CI. It never merges; it ends with the merge command for the user. User-invoked only (or followed by /run-phase), because it commits and pushes.
 argument-hint: [task-id] [--run-evals]
 arguments: [id]
 disable-model-invocation: true
@@ -9,7 +9,7 @@ allowed-tools: Read Grep Glob Edit Bash(git add *) Bash(git commit *) PowerShell
 
 # Finish task
 
-Run the gates below **in order. Each step must pass before the next.** On a failure, stop and report which step failed and why, quoting the output. Never paper over a failure: don't skip or weaken a test, add a `biome-ignore` or `v8 ignore`, lower a threshold, edit `uncovered.json` to hide a due rule, or use `--no-verify`. The rules behind these steps are in the root `CLAUDE.md` ("Before finishing") and PLAN §14.3.
+Run the gates below **in order. Each step must pass before the next.** On a failure, stop and report which step failed and why, quoting the output. Never paper over a failure: don't skip or weaken a test, add a `biome-ignore` or `v8 ignore`, lower a threshold, or use `--no-verify`. The rules behind these steps are in the root `CLAUDE.md` ("Before finishing") and PLAN §14.3.
 
 Arguments: `$ARGUMENTS`. `--run-evals` means the user agrees to spend tokens on `npm run eval:harness` in steps 3 and 5; without it, ask first.
 
@@ -52,35 +52,37 @@ For a code task, then run `npm run tests:locked -- <id>` the same way (on a task
 
 If the file list touches `apps/`, `packages/`, `.claude/hooks/` or `evals/`, run `npm run test:coverage` the same way (exit code, no pipe). A threshold miss means tests are missing; it's never fixed by changing the thresholds. Otherwise record "not needed" with the reason.
 
-## 3. Eval coverage schedule
+## 3. Eval cases (only on a trigger)
 
-1. **Due rules:** read the schedule as it was before this task, with `git show origin/main:evals/harness/reviewer/uncovered.json` on a task branch or `git show HEAD:evals/harness/reviewer/uncovered.json` on a phase branch (an earlier task in the phase may have changed it), and list every entry whose `due` is exactly the task id.
-2. For each due rule: the working copy of `uncovered.json` no longer lists it, and a case under `evals/harness/reviewer/cases/` in this change has it in `mustFind` (Grep the `expected.json` files in the file list). Missing either → **stop**: the PLAN tick in step 5 would make `coverage.test.ts` fail.
-3. **Overdue:** no entry in the working `uncovered.json` may have a `due` task that's ticked in `docs/PLAN.md` (step 1 ran `coverage.test.ts`, so this should already hold).
-4. **Run the new cases** (`evals/harness/README.md`, "Adding a case"): `npm run eval:harness -- <case> ...`. It spends tokens: run it only with `--run-evals`; otherwise ask the user and **stop** until they answer. If they decline, record "not run" for the PR body.
+Evals grow from real misses, not from a schedule (ADR 0031; triggers in `evals/harness/README.md`, "Triggers"). Add a case in this change only if step 4's triage confirmed a false positive, this task fixes a bug an earlier review missed, or the task adds a rule to the reviewer's catalog. Run new cases with `npm run eval:harness -- <case> ...` only with `--run-evals`; otherwise ask the user first. Record "none" when nothing triggered.
 
-## 4. Adversarial review (ADR 0028)
+## 4. Adversarial review, then triage (ADR 0028, ADR 0031)
 
-You implemented this change, so you don't review it, and you don't brief the reviewer: it gets artifacts only.
+You implemented this change, so you don't review it, and you don't brief the reviewer: it gets artifacts and the repository's own decisions, never your claims.
 
 1. **Snapshot the repository** for step 4.4: `git rev-parse HEAD`, `git status --porcelain -uall`, `git diff --cached | git hash-object --stdin`, `git for-each-ref | git hash-object --stdin` (branches and tags) and `git config --local --list | git hash-object --stdin`. Keep the five outputs.
-2. **Invoke the `reviewer` subagent** (never a fork) with exactly this prompt and nothing else. No summary of the change, no claim that checks pass, no rationale:
+2. **Security due?** Yes if `docs/security/threat-model.md` has a row naming this task (`planned: task <id>` or `tasks …, <id>`). The security checks then run in the same review.
+3. **Invoke the `reviewer` subagent** (never a fork) once, with exactly this prompt and nothing else. No summary of the change, no claim that checks pass, no rationale:
 
    ```
-   Review task <id> of micro-minds. mode: standard
+   Review task <id> of micro-minds. mode: standard; security: <yes|no>
    Task (docs/PLAN.md): <the task line, verbatim>
    Acceptance clauses: <the clauses from /start-task step 4.6, verbatim>
    Branch mode: <task|phase>. The change: git diff --cached <BASE>
    Code task: <yes|no> (if yes, the test lock: npm run tests:locked -- <id><phase: --base origin/main>)
+   Settled already (don't re-report as new): docs/security/threat-model.md "Residual and accepted risks", docs/backlog.md, docs/decisions/.
    ```
 
-3. Parse the **last** fenced `json` block: `{ findings: [{ ruleId, severity, file, line, summary, introduced }], probed, externalSurface, verdict }`. If it's missing, doesn't parse, or `probed` is empty, re-invoke once; if it fails again, **stop**. Any **introduced** `blocker` or `major` finding counts as changes requested, whatever the verdict says. Findings with `introduced: false` never block; list them in the PR body.
+   Parse the **last** fenced `json` block: `{ findings: [{ ruleId, severity, file, line, summary, introduced }], probed, externalSurface, verdict }`. If it's missing, doesn't parse, or `probed` is empty, re-invoke once; if it fails again, **stop**. If security wasn't due but the reviewer set `externalSurface: true`, run one more review with `security: yes` and add its findings.
 4. **Check the reviewer changed nothing:** repeat step 4.1. Any difference: **stop** and report it. Don't use that review.
-5. **Security pass.** If `docs/security/threat-model.md` has a row naming this task (`planned: task <id>` or `tasks …, <id>`), or the reviewer set `externalSurface: true`, invoke a second, fresh `reviewer` with the same prompt but `mode: security`, and snapshot around it the same way. Its findings join the first reviewer's. Record "not needed" otherwise.
-6. **blocker/major (introduced):** fix it within the task's scope, re-stage (step 0.4), and restart from step 1. Never fix a finding by editing a locked test (step 1). After **2** review rounds with blockers or majors left, **stop** and report them: repeated rejection means the task or the approach is wrong, which the user decides.
-   - If you believe a finding is a false positive, don't skip it: **stop** and show the user the evidence. A confirmed false positive is an eval trigger (`evals/harness/README.md`, "Triggers"); note it for a follow-up.
-7. **minor:** fix it (and restart from step 1), or write a one-line justification for the PR body.
-8. Keep, for step 8: the final verdict, the rounds it took, the findings fixed or justified, the already-present findings, the reviewer's `probed` list, and the security pass result.
+5. **Triage every finding** before fixing anything. Check it against the code and the repository, and give each one outcome with its evidence:
+   - **Fix**: reproduced (or plainly true from the code), introduced by this change (`introduced: true`), and in this task's scope.
+   - **Backlog**: `introduced: false`, or it belongs to a later task. Add it to `docs/backlog.md` with its source (`<id> review`) and stage that.
+   - **Reject**: it contradicts an accepted risk, an ADR or a PLAN decision. Cite the document and section.
+   - **Needs the user**: you would reject or defer a **blocker**, or you disagree about scope. **Stop** and show the evidence. A confirmed false positive is an eval trigger (step 3).
+   Minors follow the same outcomes; a fix is optional, a one-line reason is not.
+6. **Fix** the "fix" findings within the task's scope, re-stage (step 0.4), and rerun steps 1–2. Never fix a finding by editing a locked test. A second review round only when a fix changed behavior beyond the finding it fixed; after a second round with introduced blockers or majors left, **stop** for the user.
+7. Keep, for step 8: the triage table (finding, severity, outcome, evidence), the rounds, and the reviewer's `probed` list.
 
 ## 5. Tick the task
 
@@ -98,7 +100,7 @@ You implemented this change, so you don't review it, and you don't brief the rev
 - If the change alters a PLAN §2 decision: an ADR from `docs/decisions/0000-template.md` with the next number, and PLAN §2 updated to match.
 - Any other doc the change made stale: `docs/protocols/*.md`, package `CLAUDE.md` files, `docs/architecture.md`, `docs/glossary.md`.
 
-Stage the doc changes, then run `npm run check` again (step 1 rules). The tick makes `coverage.test.ts` treat this task as done, and `docs.test.ts` checks links. If step 6 did more than flip statuses (a new ADR, new prose), run step 4 again on the new diff.
+Stage the doc changes, then run `npm run check` again (step 1 rules); `docs.test.ts` checks links. A new ADR or new prose in step 6 is part of the reviewed change: write it before step 4 when you can; otherwise run step 4 again on the doc-only diff.
 
 ## 7. Commit
 
@@ -139,15 +141,19 @@ Task <id> (docs/PLAN.md §10).
 ## Test plan
 - [x] `npm run check`
 - [x] `npm run test:coverage` (or: not needed, <why>)
-- [x] Reviewer eval cases for rules due with <id>: <case dirs> (`npm run eval:harness -- <cases>`: pass / not run)
 - [x] Tests by the test writer, locked in <sha> (`npm run tests:locked -- <id>`: pass) (or: not a code task)
+- [x] Eval cases: <new cases and result, or "none triggered">
 - [ ] CI green on ubuntu, macos and windows
 - [ ] <any manual check from the task text or the phase's "Done when">
 
-## Reviewer
-Verdict: approve after <n> round(s). Fixed: <ruleId: one line each>. Minors not fixed: <ruleId: justification>. Already present (not caused by this change): <ruleId: one line each, or "none">.
-Probed: <the reviewer's probed list, one line each>.
-Security pass: <verdict and findings / not needed (no threat-model row, no external surface)>.
+## Review
+Verdict: <verdict>, <n> round(s); security checks: <yes/no>.
+
+| Finding | Severity | Outcome | Evidence |
+|---|---|---|---|
+| <ruleId: one line> | <severity> | fix / backlog / reject / user | <what was reproduced, or the cited doc> |
+
+Probed: <the reviewer's probed list, condensed>.
 
 ## Docs
 - <standards, threat model, ADR, protocol doc changes, or "none">
@@ -158,9 +164,9 @@ Security pass: <verdict and findings / not needed (no threat-model row, no exter
 ```markdown
 ### <id> `<sha>` <subject>
 - <what changed, one bullet per area>
-- Checks: check pass; tests locked in <sha> (or not a code task); coverage <pass / not needed>; eval cases <cases / none due>; reviewer approve after <n> round(s) (<fixed or justified findings, or "no findings">); security pass <result / not needed>
+- Checks: check pass; tests locked in <sha> (or not a code task); coverage <pass / not needed>; eval cases <cases / none triggered>; review <verdict>, <n> round(s), security checks <yes/no>
+- Triage: <finding → outcome (evidence), one line each, or "no findings">
 - Probed: <the reviewer's probed list, condensed>
-- Already present: <findings the change didn't cause, or "none">
 - Manual: <checks the user still has to do, or "none">
 ```
 
@@ -175,8 +181,8 @@ Security pass: <verdict and findings / not needed (no threat-model row, no exter
 |---|---|
 | 1 check | pass |
 | 2 coverage | pass / not needed (<why>) |
-| 3 eval schedule | <rules due> covered by <cases>; new cases run: pass / not run |
-| 4 reviewer | approve after <n> round(s); <k> fixed, <m> minor justified; security pass <result / not needed> |
+| 3 eval cases | <new cases: pass / not run, or "none triggered"> |
+| 4 review | <verdict>, <n> round(s); <k> fixed, <b> backlog, <r> rejected; security checks <yes/no> |
 | 5 tick | [x] <id>; phase gate: n/a / pass (<baseline row>) |
 | 6 docs | <files changed> |
 | 7 commit | <sha> <subject>; lint:commits OK |

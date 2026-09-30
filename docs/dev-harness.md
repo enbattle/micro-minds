@@ -9,8 +9,8 @@ Every change to the harness is judged against these, in order:
 
 1. **Procedures and checks beat prose.** When a rule matters, turn it into something that runs:
    a skill that performs the steps, a hook, or a deterministic test or CI gate. A written
-   instruction is the fallback, not the goal. For example, the eval-coverage schedule is
-   enforced by a test that reads PLAN.md checkboxes, not by a reminder.
+   instruction is the fallback, not the goal. For example, every reviewer rule
+   must have an eval case or a written reason, enforced by a test, not by a reminder.
 2. **Add agents, skills and hooks only when evidence shows a need.** Evidence means an eval
    result, a real miss, or repeated friction. A new specialized agent needs an eval showing that
    the existing one falls short.
@@ -21,7 +21,7 @@ Every change to the harness is judged against these, in order:
    broken harness component must never lock up the agent (the guard allows malformed input and
    logs it).
 5. **Keep always-loaded context small.** CLAUDE.md holds rules and pointers. Details live in
-   linked docs, and dynamic state (current task, overdue evals) is computed, not written down.
+   linked docs, and dynamic state (current task, dirty tree) is computed, not written down.
 6. **Record what we decide not to do.** Rejected and deferred practices go in
    [deferred-practices.md](deferred-practices.md) with the trigger that would bring them back,
    so a future session can find them instead of re-debating them.
@@ -35,11 +35,11 @@ Every change to the harness is judged against these, in order:
 | Permissions | `.claude/settings.json` → `permissions` | Allow routine commands without prompts, including pushes to task and phase branches and opening PRs; deny dangerous or sensitive ones, force-pushes, pushes to `main` and merges (ADR 0027) |
 | Guard hook | `.claude/hooks/guard.ts` (`PreToolUse`) | Second layer for credential and `.env` protection (see below) |
 | Format hook | `.claude/hooks/format.ts` (`PostToolUse`) | Runs Biome on every file Claude edits |
-| Session context hook | `.claude/hooks/session-context.ts` (`SessionStart`) | Injects live state (branch, next task, eval rules due with it, dirty tree) so CLAUDE.md stays small |
-| Subagents | `.claude/agents/` | `test-writer` (writes the failing tests before any implementation, from the task text only), `reviewer` (adversarial, read-only review with a shell to re-run checks and probe; also the security pass). See "Independent tests and review" |
+| Session context hook | `.claude/hooks/session-context.ts` (`SessionStart`) | Injects live state (branch, next task, dirty tree) so CLAUDE.md stays small |
+| Subagents | `.claude/agents/` | `test-writer` (writes the failing tests before any implementation, from the task text only), `reviewer` (adversarial, read-only review with a shell to re-run checks and probe; runs the security checks in the same review where due). See "Independent tests and review" |
 | Workflow skills | `.claude/skills/start-task`, `finish-task`, `run-phase` | Turn CLAUDE.md's task workflow into procedures: scope and plan a task; check, review, tick, commit, push and open the PR; or run a whole phase as one PR. You merge |
 | Other skills | `.claude/skills/` | `phase-status`, `new-adapter`, `record-fixture` |
-| Harness evals | `evals/harness/` | Deterministic, in CI: guard, coverage schedule, session context, harness integrity, doc links and budgets. Manual (they spend tokens): reviewer evals |
+| Harness evals | `evals/harness/` | Deterministic, in CI: guard, eval coverage accounting, session context, harness integrity, doc links and budgets. Manual (they spend tokens): reviewer evals |
 | Reference docs | `docs/glossary.md`, `docs/architecture.md` | Precise terms, and a map of the code as it exists |
 | Decisions | `docs/decisions/` | ADRs, including the harness policy in ADR 0024 |
 
@@ -49,11 +49,11 @@ Every change to the harness is judged against these, in order:
 
 1. `/phase-status` (optional) shows where the plan stands and what's next.
 2. `/start-task <id>` validates the task, sets up a branch, lists everything due with it
-   (acceptance criteria, eval cases, scheduled standards), and plans before any code.
+   (acceptance criteria, related backlog items, scheduled standards), and plans before any code.
 3. For a code task, a fresh `test-writer` writes the failing tests, which are committed and
    locked (`/start-task` step 6). Then implement against them, never editing a test.
-4. `/finish-task` runs the gates in order (check and test lock, coverage, eval schedule,
-   adversarial review and, where due, a security pass), ticks the
+4. `/finish-task` runs the gates in order (check and test lock, coverage, one adversarial
+   review with security checks where due, then triage of its findings; ADR 0031), ticks the
    checkbox, updates docs, commits, pushes the branch, opens the PR and waits for CI. It never
    merges: it ends with the merge command for you (ADR 0027). It reviews **what is staged**, so the
    check, the reviewer and the commit all see the same bytes. It's user-invoked only, because it
@@ -115,13 +115,21 @@ three roles are kept apart, each in a fresh context that never sees another's re
 - **Adversarial review.** The reviewer's mandate is the strongest case against the change. It
   re-runs `npm run check` and the test lock, matches each clause to a test, builds failure cases and
   probes them, and lists what it probed; the eval parser rejects a review with an empty `probed`
-  list. Findings the change didn't cause are marked and never block. Two rounds, then you decide.
+  list. It is told where the repository's settled decisions live (accepted risks, the backlog,
+  ADRs), so it doesn't re-report them as new. One round per task; a second only if a fix changed
+  behavior beyond its finding; after that, you decide.
+- **Triage** (ADR 0031). Every finding gets an outcome with evidence before anything is fixed:
+  fix (introduced, in scope, reproduced), backlog (already present, or a later task's), reject
+  (contradicts a cited decision) or you decide (a blocker the implementer would reject or defer).
+  The table goes into the PR, so you can overrule any of it.
 - **Read-only, verified.** The reviewer has a shell but must not change anything; `/finish-task`
   compares `HEAD`, `git status`, the staged diff, branches and tags, and the local git config before
   and after its run.
-- **Security pass.** A second reviewer run in `mode: security` for tasks named in
-  `docs/security/threat-model.md` or changes the first reviewer flags as touching an external
-  surface.
+- **Security checks.** Part of the same review (`security: yes`) for tasks named in
+  `docs/security/threat-model.md`; a separate security review only when the reviewer flags an
+  external surface the checks didn't cover.
+- **Test-writer interpretations.** Its report lists what it assumed where the task was silent;
+  they are checked against the repository before the lock, and a contradiction goes to you.
 - **Completeness audit.** At the end of `/run-phase`, a fresh agent maps every task and "Done
   when" clause of the phase to evidence.
 

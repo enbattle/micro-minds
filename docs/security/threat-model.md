@@ -187,26 +187,28 @@ rows apply if Phase 5 registers it for Gemini or Codex.
 - **A malicious agent can forge its own session's events and usage** (ADR 0013). The board
   shows what the agent reports; the terminal stays the ground truth.
 - **Scrubbing is heuristic** (ADR 0014): novel secret shapes can slip through to the local DB.
-  Known gaps, left open so ordinary text survives (task 2.2 reviews): hex-only keys (they look like
-  git hashes), random tokens under 40 characters with no known prefix, single-case letter-only
-  tokens, and secrets in YAML or JSON colon forms, `-p<pw>` / `-u user:pw` flags, cookies and
-  custom headers. Also (units 2.2-fix and 2.2-fix2): in a spaced or indented assignment, a value
-  that is a language literal or a dotted name of lower-case letters only (`hunter.two`) is taken
-  for code. A key counts as secret-named only by whole words: a lower-case `key`, a `KEY` after a
-  data-structure or modifier word (`primaryKey`, `cacheKey`, `ctrlKey`) or before a path or id
-  word (`keyPath`, `GPG_KEY_ID`, `SSH_KEY_FILE`), a leading `key` before a keyboard word
-  (`keyCode`), and any secret word before a size, type or field word (`tokenType`,
-  `PASSWORD_MIN_LENGTH`, `passwordField`) don't count; `STRIPE_KEY`, `LICENSE_KEY_CODE`,
-  `VAULT_SECRET_ID` and `SENTRY_DSN_URL` do.
-  Mid-line assignments are matched for upper-case keys only, so a lower-case query-string
-  `?access_token=…` keeps its value. An object under a secret-named key is scrubbed by its own
-  keys (`{secret: {data: …}}` keeps `data`). A single-case run joined by `-`, `_` or `+` from
-  short parts or hex hashes is taken for a name, so a vendor token shaped `<label>-<hex>` with no
-  known prefix pattern (Pulumi, Buildkite, Brevo, RubyGems, Shippo, Sourcegraph and Lob have one)
-  passes unless its key names it. A mixed-case letter-only token whose letters fall into
-  pronounceable chunks can read as words and pass (unit 2.2-fix3). Task 2.9's body limit
-  bounds the scrubber's cost (about 0.6 s per MB at worst); an input past the regex engine's limits
-  is replaced whole by the marker rather than passed through.
+  These known gaps are left open so ordinary text survives (task 2.2 and its follow-ups). The
+  reviewer treats them as settled (ADR 0031); a change that widens one is still a finding.
+  - **Token shapes:** hex-only keys (they look like git hashes); random tokens under 40
+    characters with no known prefix; single-case letter-only tokens; mixed-case letter-only
+    tokens whose letters fall into pronounceable chunks; any single-case run joined by `-`, `_`
+    or `+` from short parts or hex hashes, which reads as a name like `worktree-<sha>`, so a
+    `<label>-<hex>` vendor token passes unless it has a known-prefix pattern (Pulumi, Buildkite,
+    Brevo, RubyGems, Shippo, Sourcegraph and Lob do).
+  - **Where secrets sit:** YAML or JSON colon forms; `-p<pw>` and `-u user:pw` flags; cookies and
+    custom headers; lower-case mid-line keys such as a query string's `?access_token=…` (only
+    upper-case `KEY=value` is matched mid-line); an object under a secret-named key, which is
+    scrubbed by its own keys (`{secret: {data: …}}` keeps `data`).
+  - **Code exemption:** in a spaced or indented assignment, a language literal or a dotted name of
+    lower-case letters only (`hunter.two`) is taken for code.
+  - **Key names** count as secret by whole words. Not secret: a lower-case `key`; `KEY` after a
+    data-structure or modifier word (`primaryKey`, `cacheKey`, `ctrlKey`) or before a path or id
+    word (`keyPath`, `GPG_KEY_ID`, `SSH_KEY_FILE`); a leading `key` before a keyboard word
+    (`keyCode`); any secret word before a size, type or field word (`tokenType`,
+    `PASSWORD_MIN_LENGTH`, `passwordField`). Secret: `STRIPE_KEY`, `LICENSE_KEY_CODE`,
+    `VAULT_SECRET_ID`, `SENTRY_DSN_URL`.
+  - **Cost:** task 2.9's body limit bounds it (about 0.6 s per MB at worst); an input past the
+    regex engine's limits is replaced whole by the marker rather than passed through.
 - **Hooks fail open** (ADR 0009): lost events can briefly show a wrong state; never a wrong action.
 - **Opening a repo means trusting it** for git and for the CLI's own config loading, as if the
   user ran the CLI there by hand. We only promise not to widen that trust.
