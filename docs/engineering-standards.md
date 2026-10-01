@@ -25,8 +25,8 @@ in PRs, with no automated check).
 | Practice | Enforced by | Status |
 |---|---|---|
 | Tests first for every code change, fixture-driven where fixtures exist (who writes them and the lock: see the ADR 0028 rows below) | reviewer `TEST-missing`, `TEST-no-fixture`, `TEST-criteria`; `/finish-task` | Convention |
-| Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
-| Coverage thresholds for `apps/server` and `packages/hook-relay` | Added with the first real code in each | Scheduled: 2.6 (`apps/server`); `packages/hook-relay` when Phase 5 builds the relay (D29) |
+| Coverage thresholds: `packages/shared` 95% lines, functions and statements, 90% branches; `apps/server` 85% lines, 82% statements, 86% functions, 80% branches, as measured on Ubuntu (the fake CLI runs only as a subprocess; the Windows-only tests skip there); `.claude/hooks` 85/80; eval modules 80% lines | `npm run test:coverage` in CI (Ubuntu). Process entry points that only run as subprocesses are marked `v8 ignore`; the eval runner `run.ts` is excluded because it spawns Claude Code | Enforced |
+| Coverage thresholds for `packages/hook-relay` | Added with its first real code | Scheduled: `packages/hook-relay` when Phase 5 builds the relay (D29) |
 | Coverage thresholds for `apps/web` | Added with the web shell | Scheduled: 3.1 |
 | Property-based tests for the reducer and scrubber, each with a fixed seed so a run is reproducible | fast-check suites (`packages/shared/src/reduce.property.test.ts`, `scrub.property.test.ts`); `test-writer` instructions (ADR 0031) | Enforced (suites); convention (seeds) |
 | Never call real provider CLIs in tests | reviewer `TEST-real-cli`; fake provider | Convention |
@@ -40,8 +40,8 @@ in PRs, with no automated check).
 | Practice | Enforced by | Status |
 |---|---|---|
 | Versioned event schema and WS protocol | `packages/shared/src/schema.test.ts` (2.1); the WS server's version check (2.8) | Scheduled: 2.8 |
-| Versioned, forward-only DB migrations, each tested | Migration tests | Scheduled: 2.7 |
-| Structured logging with redaction, `sessionId` on every line | Logging conventions set in 2.6; reviewer `HR8-*`, `SEC-token-exposure` | Scheduled: 2.6 |
+| Versioned, forward-only DB migrations, each tested | `apps/server/src/store/migrations.ts` (`PRAGMA user_version`, one transaction per migration, newer databases refused); `migrations.test.ts` runs each later migration against a database made by the previous schema plus `fixtures/db/v<N-1>-*` | Enforced |
+| Structured logging with redaction, `sessionId` on every line | `apps/server/src/logging/logger.ts` (`createLogger()`: token redaction paths, payloads only at debug; session code logs through `child({ sessionId })`), tested in `logger.test.ts` and `sessions/session-manager.test.ts`; reviewer `HR8-*`, `SEC-token-exposure` | Enforced |
 | IDs are ULIDs; timestamps are server-stamped ms epoch | reviewer `CONV-ids-timestamps` | Convention |
 
 ## Security
