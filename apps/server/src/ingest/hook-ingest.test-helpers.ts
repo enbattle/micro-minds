@@ -266,3 +266,74 @@ export function postFromChild(
     });
   });
 }
+
+export interface BurstResult extends PostResult {
+  /** Wall-clock ms epoch, in the client process, just before the request was sent. */
+  sentAt: number;
+  /** Wall-clock ms epoch, in the client process, as soon as the reply had arrived. */
+  repliedAt: number;
+}
+
+function isBurstResult(value: unknown): value is BurstResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'status' in value &&
+    'body' in value &&
+    'sentAt' in value &&
+    'repliedAt' in value &&
+    typeof value.status === 'number' &&
+    typeof value.body === 'string' &&
+    typeof value.sentAt === 'number' &&
+    typeof value.repliedAt === 'number'
+  );
+}
+
+/**
+ * Task 2.7-fix, F1: POSTs every body at once (one connection each) from a separate node process,
+ * which stamps each request's send and reply times on the wall clock while the server's process
+ * may be blocked. Results come back in the order of `bodies`.
+ */
+export function postBurstFromChild(
+  url: string,
+  sessionId: string,
+  token: string,
+  bodies: readonly string[],
+): Promise<BurstResult[]> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [POST_CLIENT, hookEndpoint(url, sessionId), token, '--burst', JSON.stringify(bodies)],
+      { stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true },
+    );
+    let out = '';
+    let err = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      out += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      err += chunk;
+    });
+    child.on('error', reject);
+    child.on('exit', () => {
+      try {
+        const parsed: unknown = JSON.parse(out);
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          'results' in parsed &&
+          Array.isArray(parsed.results) &&
+          parsed.results.every(isBurstResult)
+        ) {
+          resolve(parsed.results);
+          return;
+        }
+        reject(new Error(`unexpected burst client output: ${out} ${err}`));
+      } catch {
+        reject(new Error(`the burst client failed: ${out} ${err}`));
+      }
+    });
+  });
+}

@@ -1,4 +1,4 @@
-// Task 2.7, clause C9: the Clock (D15, ADR 0015). While started it emits one `clock.tick` per
+// Task 2.7, clause C9, and 2.7-fix clause F4 (a throwing tick subscriber): the Clock (D15, ADR 0015). While started it emits one `clock.tick` per
 // running session at a configurable interval. Time (`now`) and timers (`timers.setInterval` /
 // `timers.clearInterval`) are injected, so these tests fire the interval by hand and never sleep.
 import {
@@ -8,6 +8,8 @@ import {
   ULID_PATTERN,
 } from '@micro-minds/shared';
 import { describe, expect, it } from 'vitest';
+import { logSink } from '../logging/logger.test-helpers.ts';
+import { createLogger } from '../logging/logger.ts';
 import type { Session } from '../sessions/session-manager.ts';
 import { createClock } from './clock.ts';
 
@@ -172,6 +174,68 @@ describe('Clock (C9)', () => {
       [RUNNING_B.id, T0 + 10_000],
     ]);
     clock.stop();
+  });
+
+  describe('a throwing tick subscriber (F4)', () => {
+    const RUNNING_C = session(4, 'claude', 'running');
+
+    function throwingRig(order: Session[], failing: string, withLogger: boolean) {
+      const ticked: string[] = [];
+      const logs = logSink();
+      const fake = fakeTimers();
+      const clock = createClock({
+        sessions: { list: () => order.map((s) => ({ ...s })) },
+        onEvent: (event) => {
+          if (event.sessionId === failing) throw new Error('tick subscriber failed on purpose');
+          ticked.push(event.sessionId);
+        },
+        now: () => T0,
+        timers: fake.timers,
+        ...(withLogger ? { logger: createLogger({ level: 'trace', destination: logs }) } : {}),
+      });
+      return { clock, fake, ticked, logs };
+    }
+
+    const ROWS = [
+      { name: 'first in the list', order: [RUNNING_A, RUNNING_B, RUNNING_C] },
+      { name: 'in the middle', order: [RUNNING_B, RUNNING_A, RUNNING_C] },
+      { name: 'last in the list', order: [RUNNING_B, RUNNING_C, RUNNING_A] },
+    ];
+
+    describe.each([
+      { logger: 'with a logger', withLogger: true },
+      { logger: 'without a logger', withLogger: false },
+    ])('$logger', ({ withLogger }) => {
+      it.each(ROWS)(
+        'failing $name: nothing escapes the timer callback, and the other running sessions still tick, every interval',
+        ({ order }) => {
+          const { clock, fake, ticked } = throwingRig(order, RUNNING_A.id, withLogger);
+          clock.start();
+
+          expect(() => fake.fire()).not.toThrow();
+          expect(() => fake.fire()).not.toThrow();
+
+          const others = order.filter((s) => s.id !== RUNNING_A.id).map((s) => s.id);
+          expect(ticked).toEqual([...others, ...others]);
+          clock.stop();
+        },
+      );
+    });
+
+    it("the failure is logged at warn or above with the failing session's sessionId", () => {
+      const { clock, fake, logs } = throwingRig(
+        [RUNNING_B, RUNNING_A, RUNNING_C],
+        RUNNING_A.id,
+        true,
+      );
+      clock.start();
+
+      fake.fire();
+
+      const failures = logs.records().filter((r) => typeof r.level === 'number' && r.level >= 40);
+      expect(failures.some((r) => r.sessionId === RUNNING_A.id)).toBe(true);
+      clock.stop();
+    });
   });
 
   it('emits no ticks after stop, and clears its interval', () => {

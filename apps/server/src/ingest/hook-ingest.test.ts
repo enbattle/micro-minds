@@ -1,4 +1,5 @@
-// Task 2.7, clauses C1–C5: `POST /hooks?session=<id>` (D29, PLAN §5.1, §9.6). The ingest runs on a
+// Task 2.7, clauses C1–C5, and the 2.7-fix clauses F1–F3 (the receipt time under lag, the default
+// rate limit, a rate limit that counts only authenticated requests):`POST /hooks?session=<id>` (D29, PLAN §5.1, §9.6). The ingest runs on a
 // real Fastify instance on 127.0.0.1 with a real EventStore; sessions come from a stub with the
 // SessionManager's `get` / `verifyHookToken` shape (the real manager is used in
 // hook-ingest.session.test.ts). Bodies are lines of the recorded fixtures.
@@ -16,6 +17,7 @@ import {
   isEmpty2xx,
   type PostOptions,
   type PostResult,
+  postBurstFromChild,
   postFromChild,
   postHook,
   type Rig,
@@ -27,6 +29,7 @@ import {
   stubSessions,
   waitFor,
 } from './hook-ingest.test-helpers.ts';
+import { DEFAULT_HOOK_RATE_LIMIT } from './hook-ingest.ts';
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../../../fixtures');
 
@@ -423,6 +426,45 @@ describe('HookIngest', { timeout: TIMEOUT_MS }, () => {
         await waitFor('the second request is processed', () => r.normalizeCalls.length === 2);
       },
     );
+
+    it("an event's ts is when its request was received, even when its processing lags behind a slow subscriber (F1)", async () => {
+      // Every event blocks the server's process for BLOCK_MS. Four requests sent at once from
+      // another process queue up behind that, so at least one is processed long after its reply.
+      // Its ts must still fall between its send and its reply, on the shared wall clock.
+      const BLOCK_MS = 750;
+      const TOLERANCE_MS = 50;
+      const emittedAt = new Map<string, number>();
+      const r = await start({
+        onEvent: (event) => {
+          emittedAt.set(event.id, Date.now());
+          busyWait(BLOCK_MS);
+        },
+      });
+      const marks = [0, 1, 2, 3].map((n) => `f1-receipt-${n}`);
+      const bodies = marks.map((text) => JSON.stringify({ event: 'prompt.submitted', text }));
+
+      const results = await postBurstFromChild(r.url, S1.id, S1.token, bodies);
+      await waitFor('every event is stored', () => r.store.read(S1.id).length === marks.length);
+
+      const stored = r.store.read(S1.id);
+      const lags: number[] = [];
+      marks.forEach((text, i) => {
+        const result = results[i];
+        const event = stored.find((e) => e.text === text);
+        const emitted = event === undefined ? undefined : emittedAt.get(event.id);
+        if (result === undefined || event === undefined || emitted === undefined) {
+          throw new Error(`request ${text} has no reply, stored event or emission`);
+        }
+        expect(isEmpty2xx(result)).toBe(true);
+        expect(event.ts).toBeGreaterThanOrEqual(result.sentAt - TOLERANCE_MS);
+        expect(event.ts).toBeLessThanOrEqual(result.repliedAt + TOLERANCE_MS);
+        lags.push(emitted - result.repliedAt);
+      });
+      expect(
+        Math.max(...lags),
+        'some request must be processed well after its reply for this test to mean anything',
+      ).toBeGreaterThanOrEqual(BLOCK_MS / 2);
+    });
   });
 
   describe('rate limit (C4)', () => {
@@ -450,6 +492,75 @@ describe('HookIngest', { timeout: TIMEOUT_MS }, () => {
       ]);
       expect(r.normalizeCalls).toHaveLength(4);
       expect(r.events).toHaveLength(4);
+    });
+
+    it('applies DEFAULT_HOOK_RATE_LIMIT when no rateLimit is given: the excess within one window gets 429 and is not stored (F2)', async () => {
+      const appended: AgentEvent[] = [];
+      // Stored in memory, so the 1,000-odd inserts can't stretch the burst past the window.
+      const r = await start({
+        append: (_real, event) => {
+          appended.push(event);
+        },
+      });
+      const { max, windowMs } = DEFAULT_HOOK_RATE_LIMIT;
+      const EXTRA = 5;
+      const BATCH = 100;
+      const statuses: number[] = [];
+
+      const started = Date.now();
+      for (let sent = 0; sent < max + EXTRA; sent += BATCH) {
+        const size = Math.min(BATCH, max + EXTRA - sent);
+        const batch = await Promise.all(
+          Array.from({ length: size }, () =>
+            post(r, { session: S1.id, token: S1.token, body: FIRST }),
+          ),
+        );
+        statuses.push(...batch.map((x) => x.status));
+      }
+      const elapsed = Date.now() - started;
+
+      expect(
+        elapsed,
+        'the whole burst must fit in one window for this test to mean anything',
+      ).toBeLessThan(windowMs);
+      expect(statuses.filter((s) => s >= 200 && s < 300)).toHaveLength(max);
+      expect(statuses.filter((s) => s === 429)).toHaveLength(EXTRA);
+      await waitFor('the accepted requests are processed', () => appended.length === max);
+      await settle(200);
+      expect(appended).toHaveLength(max);
+      expect(r.events).toHaveLength(max);
+      expect(r.normalizeCalls).toHaveLength(max);
+    });
+
+    it('counts only authenticated requests: any number of 401s for a running session never use up its budget (F3)', async () => {
+      const r = await start({ rateLimit: { max: 3, windowMs: 60_000 } });
+      const BAD: PostOptions[] = [
+        { session: S1.id, body: FIRST },
+        { session: S1.id, token: 'not-the-token', body: FIRST },
+        { session: S1.id, token: S2.token, body: FIRST },
+        { session: S1.id, authorization: S1.token, body: FIRST },
+        { session: S1.id, authorization: 'Bearer ', body: FIRST },
+      ];
+      const refused: number[] = [];
+      const valid: number[] = [];
+
+      // Before each valid request, every bad shape: 15 refusals in all, five times the budget.
+      for (const body of BASIC.slice(0, 3)) {
+        for (const request of BAD) refused.push((await post(r, request)).status);
+        valid.push((await post(r, { session: S1.id, token: S1.token, body })).status);
+      }
+      const beyond = await post(r, { session: S1.id, token: S1.token, body: BASIC[3] ?? FIRST });
+
+      expect(refused).toEqual(Array.from({ length: 15 }, () => 401));
+      expect(valid.every((s) => s >= 200 && s < 300)).toBe(true);
+      expect(beyond.status).toBe(429);
+      await waitFor('the accepted events are stored', () => r.store.read(S1.id).length === 3);
+      await settle(200);
+      expect(kinds(r.store.read(S1.id))).toEqual([
+        'prompt.submitted',
+        'tool.started',
+        'tool.finished',
+      ]);
     });
   });
 

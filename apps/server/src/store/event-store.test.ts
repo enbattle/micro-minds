@@ -1,9 +1,11 @@
-// Task 2.7, clauses C6 (EventStore), C7 (retention) and C8 (opening an existing database).
+// Task 2.7, clauses C6 (EventStore), C7 (retention) and C8 (opening an existing database), and
+// 2.7-fix clause F5 (a stored row that no longer parses).
 // `openEventStore({ file, retentionMs? })` is the SQLite event store on better-sqlite3; the file
 // path is handed in (from config), never derived here. Every database lives in a fresh temp dir.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AgentEvent } from '@micro-minds/shared';
+import { type AgentEvent, EVENT_SCHEMA_VERSION } from '@micro-minds/shared';
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type EventStore, openEventStore } from './event-store.ts';
 import {
@@ -152,6 +154,55 @@ describe('EventStore (C6)', () => {
 
     expect(store.read(S1)).toStrictEqual([minimalEvent(2, S1)]);
   });
+});
+
+describe('a stored row that no longer parses (F5)', () => {
+  const bad = (n: number): string => eid(100 + n);
+
+  const BAD_ROWS: Array<{ name: string; event: string | Buffer }> = [
+    { name: 'corrupt JSON', event: '{"v":1,"id":"01K6G5X' },
+    { name: 'JSON that is not an object', event: '[1,2,3]' },
+    {
+      name: 'an event from a schema version this code refuses',
+      event: JSON.stringify({ ...minimalEvent(51, S1), v: EVENT_SCHEMA_VERSION + 1 }),
+    },
+    {
+      name: 'an event with a provider the schema refuses',
+      event: JSON.stringify({ ...minimalEvent(52, S1), provider: 'no-such-provider' }),
+    },
+    {
+      name: 'an event missing a required field',
+      event: JSON.stringify({ ...minimalEvent(53, S1), agentId: undefined }),
+    },
+    { name: 'a blob, not text', event: Buffer.from([0xff, 0x00, 0x7b]) },
+  ];
+
+  function insertRaw(n: number, event: string | Buffer): void {
+    const db = new Database(file);
+    try {
+      db.prepare(
+        'INSERT INTO events (id, session_id, ts, kind, v, event) VALUES (?, ?, ?, ?, ?, ?)',
+      ).run(bad(n), S1, NOW, 'prompt.submitted', EVENT_SCHEMA_VERSION, event);
+    } finally {
+      db.close();
+    }
+  }
+
+  it.each(BAD_ROWS)(
+    'a row holding $name is skipped: read() never throws and returns the other events in order',
+    ({ event }) => {
+      const store = openStore();
+      const before = [minimalEvent(1, S1), minimalEvent(2, S1)];
+      const after = [minimalEvent(3, S1), minimalEvent(4, S1)];
+      for (const e of before) store.append(e);
+      insertRaw(1, event);
+      for (const e of after) store.append(e);
+
+      expect(() => store.read(S1)).not.toThrow();
+      expect(store.read(S1)).toStrictEqual([...before, ...after]);
+      expect(store.read(S1, { after: eid(1) })).toStrictEqual([before[1], ...after]);
+    },
+  );
 });
 
 describe('retention (C7)', () => {
